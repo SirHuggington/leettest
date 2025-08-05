@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Animal & Food Memory Game - Arcade Edition</title>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet" />
+<style>
+  /* Arcade neon & pixel font style */
+  body {
+    background: radial-gradient(circle at center, #1a1a2e, #16213e);
+    font-family: 'Press Start 2P', cursive;
+    color: #00ffea;
+    text-shadow: 0 0 8px #00fff7;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    margin: 0;
+    flex-direction: column;
+  }
+
+  #start-screen {
+    text-align: center;
+  }
+  #start-screen h1 {
+    font-size: 36px;
+    color: #ff0055;
+    margin-bottom: 20px;
+    text-shadow: 0 0 15px #ff44aa, 0 0 30px #ff77cc;
+  }
+  #player-name {
+    font-size: 12px;
+    margin-bottom: 10px;
+    padding: 5px;
+    width: 200px;
+    border: 2px solid #00ffea;
+    background: #16213e;
+    color: #00fff7;
+    outline: none;
+    border-radius: 6px;
+    text-align: center;
+  }
+  #player-name::placeholder {
+    color: #008080aa;
+  }
+
+  button {
+    background: linear-gradient(145deg, #ff0055, #ff66aa);
+    border: none;
+    color: white;
+    font-family: 'Press Start 2P', cursive;
+    font-size: 14px;
+    padding: 12px 25px;
+    margin: 8px 5px;
+    cursor: pointer;
+    border-radius: 8px;
+    box-shadow: 0 0 10px #ff0055;
+    transition: box-shadow 0.3s ease, transform 0.2s ease;
+  }
+  button:hover {
+    box-shadow: 0 0 20px #ff33aa;
+    transform: scale(1.05);
+  }
+  button:active {
+    transform: scale(0.95);
+  }
+
+  #game-container {
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+  }
+
+  #difficulty {
+    margin-bottom: 15px;
+    font-family: 'Press Start 2P', cursive;
+    font-size: 14px;
+    padding: 6px 12px;
+    background: #16213e;
+    border: 2px solid #00ffea;
+    color: #00fff7;
+    border-radius: 6px;
+    outline: none;
+  }
+
+  #scoreboard, #timer {
+    margin: 12px 0 8px 0;
+    font-size: 16px;
+    font-weight: bold;
+    text-shadow: 0 0 10px #00ffea;
+  }
+
+  .game-board {
+    display: grid;
+    grid-template-columns: repeat(5, 100px);
+    grid-gap: 12px;
+    margin-top: 10px;
+  }
+
+  .card {
+    width: 100px;
+    height: 100px;
+    background-color: #0f3460;
+    border: 2px solid #00ffea;
+    box-shadow: 0 0 15px #00ffea;
+    border-radius: 15px;
+    cursor: pointer;
+    position: relative;
+    perspective: 600px;
+    user-select: none;
+  }
+
+  .card-inner {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    text-align: center;
+    transition: transform 0.6s;
+    transform-style: preserve-3d;
+    border-radius: 15px;
+  }
+
+  .card.flipped .card-inner {
+    transform: rotateY(180deg);
+  }
+
+  .card-front,
+  .card-back {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    backface-visibility: hidden;
+    border-radius: 15px;
+  }
+
+  .card-front {
+    background: #0f3460;
+    box-shadow: inset 0 0 10px #00334d;
+  }
+
+  .card-back {
+    background: #00ffea;
+    color: #000;
+    transform: rotateY(180deg);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    overflow: hidden;
+  }
+
+  .card-back img {
+    width: 90%;
+    height: 90%;
+    border-radius: 12px;
+    object-fit: cover;
+    pointer-events: none;
+    user-select: none;
+  }
+
+  .card.matched {
+    animation: glowPulse 2s infinite alternate;
+    cursor: default;
+  }
+
+  @keyframes glowPulse {
+    0% {
+      box-shadow: 0 0 10px 3px #ff33aa, 0 0 20px #ff77cc;
+    }
+    100% {
+      box-shadow: 0 0 20px 8px #ff00cc, 0 0 40px #ff88dd;
+    }
+  }
+
+  /* Countdown overlay */
+  #countdown {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-family: 'Press Start 2P', cursive;
+    font-size: 64px;
+    color: #ff33aa;
+    text-shadow:
+      0 0 10px #ff33aa,
+      0 0 30px #ff77cc,
+      0 0 50px #ff99dd;
+    z-index: 9999;
+    user-select: none;
+  }
+</style>
+</head>
+<body>
+
+<div id="start-screen">
+  <h1>Animal Memory Game</h1>
+  <input type="text" id="player-name" placeholder="ENTER YOUR NAME" maxlength="12" />
+  <br />
+  <button id="start-btn">START GAME</button>
+</div>
+
+<div id="game-container">
+  <select id="difficulty">
+    <option value="easy">EASY</option>
+    <option value="medium" selected>MEDIUM</option>
+    <option value="hard">HARD</option>
+  </select>
+
+  <div id="scoreboard">SCORE: 0</div>
+  <div id="timer">TIME: 0s</div>
+
+  <button id="shuffle-btn">SHUFFLE CARDS</button>
+  <button id="restart-btn" style="display:none;">RESTART GAME</button>
+
+  <div class="game-board" id="game-board"></div>
+</div>
+
+<div id="countdown" style="display:none;">3</div>
+
+<script>
+  // Sound effects (from freesound.org - free & legal to use)
+  const flipSound = new Audio('https://freesound.org/data/previews/66/66717_931655-lq.mp3');
+  const matchSound = new Audio('https://freesound.org/data/previews/341/341695_3248244-lq.mp3');
+  const mismatchSound = new Audio('https://freesound.org/data/previews/93/93759_634166-lq.mp3');
+  const winSound = new Audio('https://freesound.org/data/previews/415/415209_5121236-lq.mp3');
+
+  const animals = [
+    { id: 0, name: 'Lion', img: 'https://upload.wikimedia.org/wikipedia/commons/7/73/Lion_waiting_in_Namibia.jpg' },
+    { id: 1, name: 'Gorilla', img: 'https://upload.wikimedia.org/wikipedia/commons/b/bb/Gorille_des_plaines_de_l%27ouest_%C3%A0_l%27Espace_Zoologique.jpg' },
+    { id: 2, name: 'Giraffe', img: 'https://upload.wikimedia.org/wikipedia/commons/9/9f/Giraffe_standing.jpg' },
+    { id: 3, name: 'Cat', img: 'https://upload.wikimedia.org/wikipedia/commons/3/3a/Cat03.jpg' },
+    { id: 4, name: 'Mouse', img: 'https://upload.wikimedia.org/wikipedia/commons/1/11/ApodemusSylvaticus.jpg' }
+  ];
+
+  const foods = [
+    { id: 0, name: 'Gazelle', img: 'https://upload.wikimedia.org/wikipedia/commons/d/d6/Chinkara_-_Shreeram_M_V_-_Bikaner.jpg' },
+    { id: 1, name: 'Banana', img: 'https://upload.wikimedia.org/wikipedia/commons/8/8a/Banana-Single.jpg' },
+    { id: 2, name: 'Leaves', img: 'https://upload.wikimedia.org/wikipedia/commons/thumb/a/ad/Acacia_greggii_thorns.jpg/1024px-Acacia_greggii_thorns.jpg' },
+    { id: 3, name: 'Fish', img: 'https://upload.wikimedia.org/wikipedia/commons/thumb/7/7f/Balantiocheilos_melanopterus_-_Karlsruhe_Zoo_02_%28cropped%29.jpg/1920px-Balantiocheilos_melanopterus_-_Karlsruhe_Zoo_02_%28cropped%29.jpg' },
+    { id: 4, name: 'Cheese', img: 'https://upload.wikimedia.org/wikipedia/commons/1/18/Somerset-Cheddar.jpg' }
+  ];
+
+  let shuffledCards = [];
+  let flippedCards = [];
+  let matchedPairs = 0;
+  let score = 0;
+  let gameInterval;
+  let timeElapsed = 0;
+  let difficulty = 'medium';
+  let playerName = '';
+  let boardLocked = false;
+  let totalPairs = 0;
+
+  const createDeck = () => {
+    let deck = [];
+    for (let i = 0; i < animals.length; i++) {
+      deck.push({ id: i, type: 'animal', name: animals[i].name, img: animals[i].img });
+      deck.push({ id: i, type: 'food', name: foods[i].name, img: foods[i].img });
+    }
+    return deck;
+  };
+
+  function shuffle(array) {
+    for (let i = array.length - 1; i > 0; i--) {
+      let j = Math.floor(Math.random() * (i + 1));
+      [array[i], array[j]] = [array[j], array[i]];
+    }
+    return array;
+  }
+
+  const renderBoard = () => {
+    const board = document.getElementById('game-board');
+    board.innerHTML = '';
+    for (let i = 0; i < shuffledCards.length; i++) {
+      const card = shuffledCards[i];
+      const cardEl = document.createElement('div');
+      cardEl.classList.add('card');
+      cardEl.dataset.id = card.id;
+      cardEl.dataset.type = card.type;
+
+      cardEl.innerHTML = `
+        <div class="card-inner">
+          <div class="card-front"></div>
+          <div class="card-back"><img src="${card.img}" alt="${card.name}" /></div>
+        </div>
+      `;
+
+      cardEl.addEventListener('click', () => flipCard(cardEl));
+      board.appendChild(cardEl);
+    }
+  };
+
+  const flipCard = (cardEl) => {
+    if (
+      boardLocked ||
+      cardEl.classList.contains('flipped') ||
+      cardEl.classList.contains('matched')
+    ) return;
+
+    playSound(flipSound);
+
+    cardEl.classList.add('flipped');
+    flippedCards.push(cardEl);
+
+    if (flippedCards.length === 2) {
+      boardLocked = true;
+      setTimeout(checkMatch, 800);
+    }
+  };
+
+  const checkMatch = () => {
+    const [card1, card2] = flippedCards;
+    const id1 = card1.dataset.id;
+    const id2 = card2.dataset.id;
+    const type1 = card1.dataset.type;
+    const type2 = card2.dataset.type;
+
+    // Match if same id but different type (animal-food pair)
+    if (id1 === id2 && type1 !== type2) {
+      playSound(matchSound);
+      score += 50;
+      matchedPairs++;
+      card1.classList.add('matched');
+      card2.classList.add('matched');
+      card1.removeEventListener('click', () => flipCard(card1));
+      card2.removeEventListener('click', () => flipCard(card2));
+      if (matchedPairs === totalPairs) {
+        clearInterval(gameInterval);
+        setTimeout(() => {
+          alert(`🎉 ${playerName.toUpperCase()} WINS! Final Score: ${score}`);
+          playSound(winSound);
+          document.getElementById('restart-btn').style.display = 'inline-block';
+        }, 500);
+      }
+    } else {
+      playSound(mismatchSound);
+      score = Math.max(score - 10, 0);
+      setTimeout(() => {
+        card1.classList.remove('flipped');
+        card2.classList.remove('flipped');
+      }, 400);
+    }
+
+    flippedCards = [];
+    updateScore();
+    boardLocked = false;
+  };
+
+  const updateScore = () => {
+    document.getElementById('scoreboard').textContent = `SCORE: ${score}`;
+  };
+
+  const updateTimer = () => {
+    timeElapsed++;
+    document.getElementById('timer').textContent = `TIME: ${timeElapsed}s`;
+  };
+
+  const startGame = () => {
+    playerName = document.getElementById('player-name').value.trim() || 'PLAYER';
+const bgMusic = document.getElementById('bg-music');
+if (bgMusic.paused) bgMusic.play();
+
+
+    difficulty = document.getElementById('difficulty').value;
+
+    // Show countdown
+    startCountdown(() => {
+      document.getElementById('start-screen').style.display = 'none';
+      document.getElementById('game-container').style.display = 'flex';
+
+      const deck = createDeck();
+      shuffledCards = shuffle(deck);
+
+      // Adjust board size & pairs based on difficulty
+      if (difficulty === 'easy') {
+        shuffledCards = shuffledCards.slice(0, 10);
+      } else if (difficulty === 'medium') {
+        shuffledCards = shuffledCards.slice(0, 20);
+      } else if (difficulty === 'hard') {
+        shuffledCards = shuffledCards.slice(0, 30);
+      }
+
+      totalPairs = shuffledCards.length / 2;
+      matchedPairs = 0;
+      score = 0;
+      timeElapsed = 0;
+      flippedCards = [];
+      boardLocked = false;
+
+      updateScore();
+      document.getElementById('timer').textContent = `TIME: 0s`;
+
+      renderBoard();
+
+      gameInterval = setInterval(updateTimer, 1000);
+
+      document.getElementById('restart-btn').style.display = 'none';
+    });
+  };
+
+  const startCountdown = (callback) => {
+    const countdownEl = document.getElementById('countdown');
+    countdownEl.style.display = 'block';
+    let count = 3;
+    countdownEl.textContent = count;
+    const countdownInterval = setInterval(() => {
+      count--;
+      if (count <= 0) {
+        clearInterval(countdownInterval);
+        countdownEl.style.display = 'none';
+        callback();
+      } else {
+        countdownEl.textContent = count;
+      }
+    }, 1000);
+  };
+
+  const shuffleBoard = () => {
+    if (boardLocked) return;
+    playSound(flipSound);
+    shuffledCards = shuffle(shuffledCards);
+    renderBoard();
+  };
+
+  const restartGame = () => {
+    clearInterval(gameInterval);
+    document.getElementById('game-container').style.display = 'none';
+    document.getElementById('start-screen').style.display = 'block';
+    document.getElementById('restart-btn').style.display = 'none';
+  };
+
+  const playSound = (sound) => {
+    sound.currentTime = 0;
+    sound.play();
+  };
+
+  document.getElementById('start-btn').addEventListener('click', startGame);
+  document.getElementById('shuffle-btn').addEventListener('click', shuffleBoard);
+  document.getElementById('restart-btn').addEventListener('click', restartGame);
+</script>
+<audio id="bg-music" loop>
+  <source src="nja.mp3" type="audio/mpeg">
+  Your browser does not support the audio element.
+</audio>
+
+
+</body>
+</html>

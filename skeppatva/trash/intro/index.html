@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Ghost Chess Intro</title>
+<style>
+  body, html {
+    margin: 0; padding: 0; height: 100%;
+    background: black;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-family: 'Courier New', monospace;
+    overflow: hidden;
+  }
+  #ghost-intro {
+    color: white;
+    font-size: 1.8rem;
+    text-align: center;
+    padding: 50px;
+    width: 90vw;
+    max-width: 600px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+  .ghost-line {
+    opacity: 0;
+    animation: fadeIn 1s ease forwards;
+  }
+  .delay-0 {
+    animation-delay: 0.5s;
+    color: gold;
+    text-shadow: 0 0 8px gold, 0 0 15px #ffaa00;
+  }
+  .delay-1 { animation-delay: 2s; }
+  .delay-2 { animation-delay: 4s; }
+  .delay-3 { animation-delay: 6s; }
+  .delay-4 { animation-delay: 8s; }
+
+  .chaos span {
+    color: #ff00cc;
+    text-shadow: 0 0 5px #ff00cc, 0 0 20px #ff00cc;
+    animation: pulse 1.2s infinite alternate;
+  }
+
+  @keyframes fadeIn {
+    to { opacity: 1; }
+  }
+
+  @keyframes pulse {
+    from { transform: scale(1); opacity: 0.8; }
+    to { transform: scale(1.1); opacity: 1; }
+  }
+</style>
+</head>
+<body>
+  <div id="ghost-intro">
+    <div class="ghost-line delay-0">Welcome to Dice Chess: Ghost Edition</div>
+    <div class="ghost-line delay-1">Ghost Chess Explained</div>
+    <div class="ghost-line delay-2">Players often abuse Rooks.</div>
+    <div class="ghost-line delay-3">But when Queens and Bishops phase through pieces (due to a “bug”)...</div>
+    <div class="ghost-line delay-4">It balances the game <em>perfectly</em>.</div>
+    <div class="ghost-line delay-4 chaos">This is not a glitch. It’s <span>design by chaos</span>.</div>
+  </div>
+
+  <script>
+    const intro = document.getElementById("ghost-intro");
+
+    function endIntro() {
+      intro.style.display = "none";
+      window.removeEventListener("keydown", skipIntro);
+    }
+
+    function skipIntro(event) {
+      if (event.code === "Space") {
+        endIntro();
+      }
+    }
+
+    window.addEventListener("keydown", skipIntro);
+
+    // Auto-end after 11 seconds
+    setTimeout(endIntro, 11000);
+  </script>
+</body>
+</html>

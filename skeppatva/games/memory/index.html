@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Animal & Food Memory Game with Images</title>
+<style>
+  body {
+  font-family: Arial, sans-serif;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  margin: 0;
+  background-image: url('amg.png');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  flex-direction: column;
+}
+
+  #start-screen {
+    text-align: center;
+  }
+  #start-screen h1 {
+    font-size: 36px;
+    color: #4CAF50;
+    margin-bottom: 20px;
+  }
+  #player-name {
+    font-size: 16px;
+    margin-bottom: 10px;
+    padding: 5px;
+  }
+  #start-btn {
+    padding: 10px 25px;
+    font-size: 18px;
+    cursor: pointer;
+    background-color: #4CAF50;
+    color: white;
+    border: none;
+    border-radius: 5px;
+  }
+  #start-btn:hover {
+    background-color: #45a049;
+  }
+  #game-container {
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+  }
+  .game-board {
+    display: grid;
+    grid-template-columns: repeat(5, 100px);
+    grid-gap: 10px;
+  }
+  .card {
+    width: 100px;
+    height: 100px;
+    background-color: #4CAF50;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+    border-radius: 10px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+    transition: all 0.3s ease;
+    position: relative;
+  }
+  .card img {
+    width: 90%;
+    height: 90%;
+    border-radius: 8px;
+    object-fit: cover;
+    pointer-events: none;
+    user-select: none;
+  }
+  .flipped {
+    background-color: #fff;
+  }
+  .matched {
+    background-color: #FFEB3B;
+    cursor: default;
+  }
+  #shuffle-btn, #restart-btn {
+    margin: 15px 5px;
+    padding: 10px 20px;
+    font-size: 16px;
+    cursor: pointer;
+    background-color: #4CAF50;
+    color: white;
+    border: none;
+    border-radius: 5px;
+  }
+  #shuffle-btn:hover, #restart-btn:hover {
+    background-color: #45a049;
+  }
+  #scoreboard, #timer {
+    margin: 10px 0;
+    font-size: 18px;
+    font-weight: bold;
+  }
+  #difficulty {
+    margin-bottom: 10px;
+  }
+</style>
+</head>
+<body>
+
+<div id="start-screen">
+  <h1>Animal Memory Game</h1>
+  <input type="text" id="player-name" placeholder="Enter your name" />
+  <br />
+  <button id="start-btn">Start Game</button>
+</div>
+
+<div id="game-container">
+  <select id="difficulty">
+    <option value="easy">Easy</option>
+    <option value="medium" selected>Medium</option>
+    <option value="hard">Hard</option>
+  </select>
+
+  <div id="scoreboard">Score: 0</div>
+  <div id="timer">Time: 0s</div>
+
+  <button id="shuffle-btn">Shuffle Cards</button>
+  <button id="restart-btn" style="display:none;">Restart Game</button>
+
+  <div class="game-board" id="game-board"></div>
+</div>
+
+<script>
+  const animals = [
+    { id: 0, name: 'Lion', img: 'https://upload.wikimedia.org/wikipedia/commons/7/73/Lion_waiting_in_Namibia.jpg' },
+    { id: 1, name: 'Gorilla', img: 'https://upload.wikimedia.org/wikipedia/commons/b/bb/Gorille_des_plaines_de_l%27ouest_%C3%A0_l%27Espace_Zoologique.jpg' },
+    { id: 2, name: 'Giraffe', img: 'https://upload.wikimedia.org/wikipedia/commons/9/9f/Giraffe_standing.jpg' },
+    { id: 3, name: 'Cat', img: 'https://upload.wikimedia.org/wikipedia/commons/3/3a/Cat03.jpg' },
+    { id: 4, name: 'Mouse', img: 'https://upload.wikimedia.org/wikipedia/commons/1/11/ApodemusSylvaticus.jpg' }
+  ];
+
+  const foods = [
+    { id: 0, name: 'Gazelle', img: 'https://upload.wikimedia.org/wikipedia/commons/d/d6/Chinkara_-_Shreeram_M_V_-_Bikaner.jpg' },
+    { id: 1, name: 'Banana', img: 'https://upload.wikimedia.org/wikipedia/commons/8/8a/Banana-Single.jpg' },
+    { id: 2, name: 'Leaves', img: 'https://upload.wikimedia.org/wikipedia/commons/thumb/a/ad/Acacia_greggii_thorns.jpg/1024px-Acacia_greggii_thorns.jpg' },
+    { id: 3, name: 'Fish', img: 'https://upload.wikimedia.org/wikipedia/commons/thumb/7/7f/Balantiocheilos_melanopterus_-_Karlsruhe_Zoo_02_%28cropped%29.jpg/1920px-Balantiocheilos_melanopterus_-_Karlsruhe_Zoo_02_%28cropped%29.jpg' },
+    { id: 4, name: 'Cheese', img: 'https://upload.wikimedia.org/wikipedia/commons/1/18/Somerset-Cheddar.jpg' }
+  ];
+
+  let shuffledCards = [];
+  let flippedCards = [];
+  let matchedPairs = 0;
+  let score = 0;
+  let gameInterval;
+  let timeElapsed = 0;
+  let difficulty = 'medium';
+  let playerName = '';
+  let boardLocked = false;
+  let totalPairs = 0;
+
+  const createDeck = () => {
+    let deck = [];
+    for (let i = 0; i < animals.length; i++) {
+      deck.push({ id: i, type: 'animal', name: animals[i].name, img: animals[i].img });
+      deck.push({ id: i, type: 'food', name: foods[i].name, img: foods[i].img });
+    }
+
+    if (difficulty === 'easy') {
+      deck = deck.slice(0, 6); // 3 pairs
+    } else if (difficulty === 'hard') {
+      deck = deck.concat(deck); // duplicate deck
+    }
+
+    totalPairs = deck.length / 2;
+    shuffledCards = deck.sort(() => Math.random() - 0.5);
+  };
+
+  const renderBoard = () => {
+    const board = document.getElementById('game-board');
+    board.innerHTML = '';
+    shuffledCards.forEach((card, index) => {
+      const cardElement = document.createElement('div');
+      cardElement.classList.add('card');
+      cardElement.dataset.index = index;
+      cardElement.addEventListener('click', flipCard);
+      board.appendChild(cardElement);
+    });
+  };
+
+  const flipCard = (e) => {
+    if (boardLocked) return;
+    if (flippedCards.length < 2) {
+      const card = e.target;
+      const cardIndex = card.dataset.index;
+
+      if (!card.classList.contains('flipped') && !card.classList.contains('matched')) {
+        card.classList.add('flipped');
+        card.innerHTML = `<img src="${shuffledCards[cardIndex].img}" alt="${shuffledCards[cardIndex].name}">`;
+        flippedCards.push({ card, cardIndex });
+
+        if (flippedCards.length === 2) {
+          checkMatch();
+        }
+      }
+    }
+  };
+
+  const checkMatch = () => {
+    boardLocked = true;
+    const [first, second] = flippedCards;
+    if (shuffledCards[first.cardIndex].id === shuffledCards[second.cardIndex].id) {
+      first.card.classList.add('matched');
+      second.card.classList.add('matched');
+      matchedPairs++;
+      score += 10;
+      updateScore();
+
+      boardLocked = false;
+      flippedCards = [];
+
+      if (matchedPairs === totalPairs) {
+        clearInterval(gameInterval);
+        alert(`${playerName || 'Player'}! You matched all pairs in ${timeElapsed} seconds!`);
+        document.getElementById('restart-btn').style.display = 'inline-block';
+      }
+    } else {
+      setTimeout(() => {
+        first.card.classList.remove('flipped');
+        second.card.classList.remove('flipped');
+        first.card.innerHTML = '';
+        second.card.innerHTML = '';
+        flippedCards = [];
+        boardLocked = false;
+      }, 1000);
+    }
+  };
+
+  const updateScore = () => {
+    document.getElementById('scoreboard').textContent = `Score: ${score}`;
+  };
+
+  const updateTimer = () => {
+    timeElapsed++;
+    document.getElementById('timer').textContent = `Time: ${timeElapsed}s`;
+  };
+
+  const startTimer = () => {
+    clearInterval(gameInterval);  // Clear any existing interval before starting
+    timeElapsed = 0;
+    gameInterval = setInterval(updateTimer, 1000);
+  };
+
+  const shuffleGame = () => {
+    matchedPairs = 0;
+    flippedCards = [];
+    score = 0;
+    updateScore();
+    createDeck();
+    renderBoard();
+    startTimer();
+    document.getElementById('restart-btn').style.display = 'none';
+  };
+
+  const restartGame = () => {
+    document.getElementById('restart-btn').style.display = 'none';
+    shuffleGame();
+  };
+
+  const changeDifficulty = () => {
+    difficulty = document.getElementById('difficulty').value;
+    shuffleGame();
+  };
+
+  document.getElementById('start-btn').addEventListener('click', () => {
+    playerName = document.getElementById('player-name').value.trim();
+    if (!playerName) {
+      alert('Please enter your name!');
+      return;
+    }
+    document.getElementById('start-screen').style.display = 'none';
+    document.getElementById('game-container').style.display = 'flex';
+    shuffleGame();
+  });
+
+  document.getElementById('shuffle-btn').addEventListener('click', shuffleGame);
+  document.getElementById('restart-btn').addEventListener('click', restartGame);
+  document.getElementById('difficulty').addEventListener('change', changeDifficulty);
+</script>
+
+</body>
+</html>

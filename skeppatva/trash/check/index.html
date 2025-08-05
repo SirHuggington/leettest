@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Dice Chess (With Checkmate)</title>
+  <style>
+    body { background: #222; color: #fff; font-family: Arial, sans-serif; text-align: center; margin: 0; padding: 20px; }
+    h1 { margin-bottom: 10px; }
+    #settings, #game { max-width: 500px; margin: auto; }
+    .hidden { display: none; }
+    button { padding: 10px 20px; font-size: 16px; margin: 10px; background: #444; color: white; border: none; border-radius: 5px; cursor: pointer; }
+    #dice { font-size: 40px; margin: 10px; }
+    #allowed { font-size: 20px; }
+    table { border-collapse: collapse; margin: 10px auto; }
+    td { width: 50px; height: 50px; text-align: center; vertical-align: middle; font-size: 32px; cursor: pointer; user-select: none; transition: background-color 0.2s; }
+    .white { background: #f0d9b5; }
+    .black { background: #b58863; }
+    .selected { outline: 3px solid yellow; }
+    .red { color: #ff4d4d; }
+    .blue { color: #4d94ff; }
+    #scoreboard { display: flex; justify-content: space-around; margin:10px; }
+    #scoreboard div { font-size: 18px; }
+  </style>
+</head>
+<body>
+  <h1>🎲 Dice Chess</h1>
+  <div id="settings">
+    <h2>Choose Mode & Options</h2>
+    <div>
+      <label><input type="radio" name="mode" value="basic" checked> Basic</label><br>
+      <label><input type="radio" name="mode" value="rs1"> Capture-Value (Mode 1)</label><br>
+      <label><input type="radio" name="mode" value="rs2"> Capture+Survival (Mode 2)</label><br>
+      <label><input type="radio" name="mode" value="rs3"> Threshold→Sudden-Death (Mode 3)</label>
+    </div>
+    <div>
+      <label><input type="checkbox" id="optSurvival"> Survival Bonus</label><br>
+      <label><input type="checkbox" id="optReroll"> Reroll Credit</label>
+    </div>
+    <button onclick="startGame()">Start Game</button>
+  </div>
+
+  <div id="game" class="hidden">
+    <div id="scoreboard">
+      <div>Red (P1): <span id="score1">0</span></div>
+      <div>Blue (P2): <span id="score2">0</span></div>
+    </div>
+    <button onclick="rollDice()">Roll Dice</button>
+    <div id="dice">🎲</div>
+    <div id="allowed">Allowed piece: -</div>
+    <table id="chessboard"></table>
+  </div>
+
+  <script>
+    const settingsEl = document.getElementById('settings');
+    const gameEl = document.getElementById('game');
+    const boardEl = document.getElementById('chessboard');
+    const diceEl = document.getElementById('dice');
+    const allowedEl = document.getElementById('allowed');
+    const score1El = document.getElementById('score1');
+    const score2El = document.getElementById('score2');
+
+    let board, turn, allowedType, selected = null;
+    let mode, optSurvival, optReroll;
+    let score1, score2, turnsCount;
+    let whiteKing = {x:4,y:7}, blackKing = {x:4,y:0};
+    const threshold = 25;
+
+    const initialPosition = [
+      ['r','n','b','q','k','b','n','r'],
+      ['p','p','p','p','p','p','p','p'],
+      ['','','','','','','',''],
+      ['','','','','','','',''],
+      ['','','','','','','',''],
+      ['','','','','','','',''],
+      ['P','P','P','P','P','P','P','P'],
+      ['R','N','B','Q','K','B','N','R'],
+    ];
+
+    const pieceNames = { p:'Pawn',n:'Knight',b:'Bishop',r:'Rook',q:'Queen',k:'King' };
+    const pieceIcons = { p:'♟',r:'♜',n:'♞',b:'♝',q:'♛',k:'♚',P:'♙',R:'♖',N:'♘',B:'♗',Q:'♕',K:'♔' };
+    const values = { p:1,n:3,b:3,r:5,q:9,k:0 };
+
+    function startGame() {
+      board = JSON.parse(JSON.stringify(initialPosition));
+      turn = 'w'; allowedType = null;
+      score1 = score2 = turnsCount = 0;
+      mode = document.querySelector('input[name=mode]:checked').value;
+      optSurvival = document.getElementById('optSurvival').checked;
+      optReroll = document.getElementById('optReroll').checked;
+      whiteKing = {x:4,y:7}; blackKing = {x:4,y:0};
+      updateScores();
+      settingsEl.classList.add('hidden');
+      gameEl.classList.remove('hidden');
+      drawBoard();
+    }
+
+    function rollDice() {
+      const roll = Math.floor(Math.random()*6)+1;
+      const types = ['p','n','b','r','q','k'];
+      allowedType = types[roll-1];
+      diceEl.textContent = `🎲 ${roll}`;
+      allowedEl.textContent = `Allowed piece: ${pieceNames[allowedType]}`;
+      selected=null; drawBoard();
+    }
+
+    function drawBoard() {
+      boardEl.innerHTML = '';
+      for (let y=0;y<8;y++){ const tr=document.createElement('tr');
+        for (let x=0;x<8;x++){ const cell=document.createElement('td');
+          const piece=board[y][x];
+          cell.className=(x+y)%2===0?'white':'black';
+          cell.textContent=pieceIcons[piece]||'';
+          if(piece){ cell.classList.add(piece===piece.toUpperCase()?'red':'blue'); }
+          if(selected&&selected.x==x&&selected.y==y)cell.classList.add('selected');
+          cell.onclick=()=>handleCellClick(x,y);
+          tr.appendChild(cell);
+        } boardEl.appendChild(tr);
+      }
+    }
+
+    function handleCellClick(x,y){ const piece=board[y][x];
+      if(selected){ if(tryMove(selected.x,selected.y,x,y)){ selected=null; drawBoard(); checkEnd(); } else{ selected=null; drawBoard(); } }
+      else if(piece&&isPlayersPiece(piece)&&matchesAllowed(piece)){ selected={x,y}; drawBoard(); }
+    }
+
+    function isPlayersPiece(p){ return turn==='w'?p===p.toUpperCase():p===p.toLowerCase(); }
+    function matchesAllowed(p){ return p.toLowerCase()===allowedType; }
+
+    function tryMove(sx,sy,dx,dy){ const p=board[sy][sx], dest=board[dy][dx];
+      if(!p||!matchesAllowed(p)) return false;
+      if(dest&&((turn==='w'?dest===dest.toUpperCase():dest===dest.toLowerCase()))) return false;
+      const dxAbs=Math.abs(dx-sx), dyAbs=Math.abs(dy-sy), dir=turn==='w'?-1:1;
+      const t=p.toLowerCase(); let valid=false;
+      if(t==='p'){ if(dx===sx&&dy-sy===dir&&!dest) valid=true; if(dxAbs===1&&dy-sy===dir&&dest) valid=true; }
+      if(t==='r') valid=(sx===dx||sy===dy);
+      if(t==='n') valid=(dxAbs===1&&dyAbs===2)||(dxAbs===2&&dyAbs===1);
+      if(t==='b') valid=dxAbs===dyAbs;
+      if(t==='q') valid=dxAbs===dyAbs||sx===dx||sy===dy;
+      if(t==='k') valid=dxAbs<=1&&dyAbs<=1;
+      if(!valid) return false;
+      if(dest){ const pts=values[dest.toLowerCase()]; if(turn==='w') score1+=pts; else score2+=pts; }
+      if(optSurvival) { if(turn==='w') score1+=0.5; else score2+=0.5; }
+      board[dy][dx]=p; board[sy][sx]='';
+      if(p.toLowerCase()==='k'){ if(turn==='w') whiteKing={x:dx,y:dy}; else blackKing={x:dx,y:dy}; }
+      turn=turn==='w'?'b':'w';
+      if(optReroll && allowedType && !hasPiece(turn, allowedType)){
+        if(turn==='w') score1+=0.2; else score2+=0.2;
+      }
+      allowedType=null; diceEl.textContent='🎲'; allowedEl.textContent='Allowed piece: -';
+      turnsCount++; updateScores(); drawBoard();
+      checkForCheckmate();
+      return true;
+    }
+
+    function hasPiece(color,type){ return board.flat().some(p=>p && ((color==='w'?p===p.toUpperCase():p===p.toLowerCase())&&p.toLowerCase()===type)); }
+    function updateScores(){ score1El.textContent=score1; score2El.textContent=score2; }
+
+    function checkEnd(){ if(mode==='basic') return;
+      if(mode==='rs3'){ if(score1>=threshold||score2>=threshold){ alert('Threshold reached! Sudden-death now: Next checkmate wins.'); mode='basic'; } }
+    }
+
+    function checkForCheckmate() {
+      const king = turn==='w' ? whiteKing : blackKing;
+      const enemyColor = turn==='w' ? 'b' : 'w';
+      if (!isSquareAttacked(king.x, king.y, enemyColor)) return;
+
+      for (let sy=0;sy<8;sy++){
+        for (let sx=0;sx<8;sx++){
+          const p=board[sy][sx];
+          if(!p || !isPlayersPiece(p)) continue;
+          for (let dy=0;dy<8;dy++){
+            for (let dx=0;dx<8;dx++){
+              if(!tryMoveLegalOnly(sx,sy,dx,dy)) continue;
+              return; // Has escape
+            }
+          }
+        }
+      }
+      alert(`${turn==='w'?'Red':'Blue'} is checkmated! Game over.`);
+      gameEl.classList.add('hidden');
+      settingsEl.classList.remove('hidden');
+    }
+
+    function tryMoveLegalOnly(sx,sy,dx,dy){
+      const p=board[sy][sx], dest=board[dy][dx];
+      const dxAbs=Math.abs(dx-sx), dyAbs=Math.abs(dy-sy), dir=turn==='w'?-1:1;
+      const t=p.toLowerCase(); let valid=false;
+      if(t==='p'){ if(dx===sx&&dy-sy===dir&&!dest) valid=true; if(Math.abs(dx-sx)===1&&dy-sy===dir&&dest) valid=true; }
+      if(t==='r') valid=(sx===dx||sy===dy);
+      if(t==='n') valid=(dxAbs===1&&dyAbs===2)||(dxAbs===2&&dyAbs===1);
+      if(t==='b') valid=dxAbs===dyAbs;
+      if(t==='q') valid=dxAbs===dyAbs||sx===dx||sy===dy;
+      if(t==='k') valid=dxAbs<=1&&dyAbs<=1;
+      if(!valid) return false;
+
+      const backup = board[dy][dx], backupFrom = board[sy][sx];
+      const kingBackup = {...(turn==='w'?whiteKing:blackKing)};
+      board[dy][dx] = p; board[sy][sx] = '';
+      if(t==='k'){ if(turn==='w') whiteKing={x:dx,y:dy}; else blackKing={x:dx,y:dy}; }
+      const inCheck = isSquareAttacked((turn==='w'?whiteKing:blackKing).x, (turn==='w'?whiteKing:blackKing).y, turn==='w'?'b':'w');
+      board[sy][sx] = backupFrom; board[dy][dx] = backup;
+      if(t==='k'){ if(turn==='w') whiteKing=kingBackup; else blackKing=kingBackup; }
+      return !inCheck;
+    }
+
+    function isSquareAttacked(x,y,byColor){
+      for(let sy=0;sy<8;sy++){
+        for(let sx=0;sx<8;sx++){
+          const attacker=board[sy][sx];
+          if(!attacker) continue;
+          if(byColor==='w'&&attacker!==attacker.toUpperCase()) continue;
+          if(byColor==='b'&&attacker!==attacker.toLowerCase()) continue;
+          if(canAttack(sx,sy,x,y,attacker)) return true;
+        }
+      }
+      return false;
+    }
+
+    function canAttack(sx,sy,dx,dy,p){
+      const dxAbs=Math.abs(dx-sx), dyAbs=Math.abs(dy-sy), dir=p===p.toUpperCase()?-1:1;
+      const t=p.toLowerCase(); let valid=false;
+      if(t==='p'){ if(Math.abs(dx-sx)===1&&dy-sy===dir) valid=true; }
+      if(t==='r') valid=(sx===dx||sy===dy);
+      if(t==='n') valid=(dxAbs===1&&dyAbs===2)||(dxAbs===2&&dyAbs===1);
+      if(t==='b') valid=dxAbs===dyAbs;
+      if(t==='q') valid=dxAbs===dyAbs||sx===dx||sy===dy;
+      if(t==='k') valid=dxAbs<=1&&dyAbs<=1;
+      return valid;
+    }
+  </script>
+</body>
+</html>

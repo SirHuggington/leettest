@@ -1,0 +1,54 @@
+/* Basic layout */
+body { font-family: sans-serif; background: #fafafa; margin: 20px; }
+h1, p { text-align: center; }
+#game { text-align: center; margin-top: 20px; }
+
+/* Buttons */
+button { padding: 10px 20px; margin: 5px; font-size: 16px; }
+/* Labels (clickable educational hotspots) */
+.label { position: absolute; padding: 5px; font-weight: bold; opacity: 0.7; cursor: pointer; }
+.html-label { bottom: 10px; left: 10px; background: lightblue; }
+.css-label { top: 10px; right: 10px; background: lightgreen; }
+.js-label { bottom: 10px; right: 10px; background: lightsalmon; }
+
+/* Overlay box */
+.overlay { position: fixed; top: 20%; left: 50%; transform: translateX(-50%); background: white; border: 2px solid #444; padding: 20px; max-width: 400px; }
+.hidden { display: none; }
+
+/* Add this to your style.css */
+
+.file-structure-minimap {
+  display: flex;
+  gap: 1.5rem;
+  background: #222;
+  color: #eee;
+  padding: 1rem;
+  border-radius: 8px;
+  font-family: monospace;
+}
+.file-structure-minimap .column {
+  flex: 1;
+}
+.file-structure-minimap h3 {
+  margin-top: 0;
+  color: #4fc3f7;
+  font-size: 1.1rem;
+}
+.file-structure-minimap ul {
+  list-style: none;
+  padding-left: 0;
+  margin: 0.5rem 0;
+}
+.file-structure-minimap ul li {
+  margin: 0.25rem 0;
+  line-height: 1.4;
+}
+.file-structure-minimap ul li ul {
+  margin-top: 0.25rem;
+  margin-left: 1rem;
+}
+.file-structure-minimap ul li ul li {
+  font-size: 0.9rem;
+  color: #bbb;
+}
+

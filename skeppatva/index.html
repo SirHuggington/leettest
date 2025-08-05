@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>My Proto-Game Showcase</title>
+  <style>
+    body { font-family: sans-serif; margin: 0; background: #111; color: #fff; }
+    header { text-align: center; padding: 1em; background: #222; }
+    .game-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1em; padding: 1em; }
+    .game-tile { background: #333; border: 2px solid #444; padding: 1em; border-radius: 8px;
+                cursor: pointer; text-align: center; transition: transform 0.2s; display: flex;
+                flex-direction: column; align-items: center; justify-content: center; }
+    .game-tile:hover { transform: scale(1.05); background: #555; }
+    .game-title { margin-top: 0.5em; font-weight: bold; }
+
+    /* universal emoji size */
+    .game-tile > div:first-child { font-size: 3rem; line-height: 1; }
+    /* slight adjust for Animal Memory Arcade multi-emoji */
+    .animal-arcade > div:first-child { font-size: 2.8rem; }
+
+    .tile-container { position: relative; }
+    .submenu {
+      display: none;
+      position: absolute;
+      top: calc(100% + 0.5em);
+      left: 0;
+      min-width: 200px;
+      background: #111;
+      border: 2px solid #444;
+      padding: 1em;
+      border-radius: 8px;
+      z-index: 10;
+    }
+    .submenu .game-grid { grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 0.5em; }
+    .submenu .game-tile { background: #2a2a2a; border-style: dashed; padding: 0.5em; }
+
+    .modal { position: fixed; top:0; left:0; width:100%; height:100%;
+             background: rgba(0,0,0,0.9); display:none; flex-direction: column;
+             align-items:center; justify-content:center; z-index:999; }
+    .modal iframe { width:90%; height:90%; border:none; }
+    .modal button { margin-top:10px; padding:0.5em 1em; background:#f33; border:none;
+                   color:white; font-size:1em; cursor:pointer; border-radius:5px; }
+
+    .features-section { background: #1a1a1a; padding: 2em; margin-top: 2em; border-top: 2px solid #444; }
+    .features-section h2 { text-align: center; color: #ffcc00; margin-bottom: 1em; }
+    .features-section ul { list-style: none; padding: 0; max-width: 600px; margin: 0 auto; }
+    .features-section li { background: #292929; border: 1px solid #444; border-radius: 6px;
+                           padding: 0.8em; margin: 0.5em 0; font-size: 1.1em; }
+
+
+
+  </style>
+</head>
+<body>
+
+  <header>
+<h1>🔥 Burning Laptop Studios  🔥</h1>
+    <h2>🎮🧙‍♂️ My Proto-Game Showcase</h2>
+    <p>Click a game to play - or help yourself to some Code or a Tool</p>
+  </header>
+
+  <div class="game-grid">
+    <!-- Regular tiles -->
+    <div class="game-tile" onclick="launchGame('games/lovecraft/')">
+      <div>🦑</div>
+      <div class="game-title">Lovecraft TDS</div>
+    </div>
+    <div class="game-tile" onclick="launchGame('games/egem/')">
+      <div>🕵️‍♂️</div>
+      <div class="game-title">Every Game Ever Made</div>
+    </div>
+    <div class="game-tile" onclick="launchGame('games/particlepower/')">
+      <div>🧊</div>
+      <div class="game-title">Particle Power</div>
+    </div>
+    <div class="game-tile" onclick="launchGame('games/arenashooty/')">
+      <div>⚔️</div>
+      <div class="game-title">Arena Shooty</div>
+    </div>
+    <div class="game-tile" onclick="launchGame('games/memory/')">
+      <div>🦧🍌</div>
+      <div class="game-title">Memory</div>
+    </div>
+    <div class="game-tile animal-arcade" onclick="launchGame('games/arcadememory/')">
+      <div>🦧🕹️</div>
+      <div class="game-title">Animal Memory Arcade</div>
+    </div>
+<div class="game-tile" onclick="launchGame('games/ghostnoob/')">
+  <div>🎲♜👻</div>
+  <div class="game-title">Dice Chess: Ghost Noob Edition V3a</div>
+</div>
+<div class="game-tile" onclick="launchGame('games/ghosthardcore/')">
+  <div>🎲♜👻</div>
+  <div class="game-title">Dice Chess: Ghost Hardcore Edition V3b</div>
+</div>
+<div class="game-tile" onclick="launchGame('games/codeclicker/')">
+  <div>👨‍💻</div>
+  <div class="game-title">Code Clicker</div>
+</div>
+<div class="game-tile" onclick="launchGame('games/easysouls/')">
+  <div>🤺</div>
+  <div class="game-title">Easy Souls</div>
+</div>
+<div class="game-tile" onclick="launchGame('games/hardsouls/')">
+  <div>🤺</div>
+  <div class="game-title">Hard Souls</div>
+</div>
+
+<!-- Tools (Collapsible) -->
+<div class="tile-container">
+  <div class="game-tile" onclick="toggleSubmenu('tools')">
+    <div>🛠️</div>
+    <div class="game-title">Tools</div>
+  </div>
+  <div id="submenu-tools" class="submenu">
+    <div class="game-grid">
+      <div class="game-tile" onclick="launchGame('tools/sprite-tool/')">
+        <div>🖼️</div>
+        <div class="game-title">Sprite Animator</div>
+      </div>
+      <div class="game-tile" onclick="launchGame('tools/other-tool/')">
+        <div>⚙️</div>
+        <div class="game-title">Other Tool</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+
+    <!-- Demo Code -->
+    <!-- Demo Code -->
+<div class="tile-container">
+  <div class="game-tile" onclick="toggleSubmenu('demo')">
+    <div>👨🏻‍💻</div>
+    <div class="game-title">Demo Code</div>
+  </div>
+  <div id="submenu-demo" class="submenu">
+    <div class="game-grid">
+<div class="game-tile" onclick="launchGame('demos/control/')">
+  <div>🐙🔫</div>
+  <div class="game-title">Tight fps+third person controls.</div>
+</div>
+      <div class="game-tile" onclick="launchGame('demos/hazards-demo/')">
+        <div>☠️</div>
+        <div class="game-title">Hazards Demo</div>
+      </div>
+<div class="game-tile" onclick="launchGame('demos/gorgon/')">
+        <div>🐍</div>
+        <div class="game-title">Gorgon Boss</div>
+      </div>
+      <div class="game-tile" onclick="launchGame('demos/boss-demo/')">
+  <div>🟪</div>
+  <div class="game-title">Particle Power Boss</div>
+</div>
+
+      <div class="game-tile" onclick="launchGame('demos/dash-demo/')">
+        <div>💨</div>
+        <div class="game-title">Dash Demo</div>
+
+
+
+      </div>
+    </div>
+  </div>
+</div>
+
+
+    <!-- Papperskorgen -->
+    <div class="tile-container">
+      <div class="game-tile" onclick="toggleSubmenu('trash')">
+        <div>🗑️</div>
+        <div class="game-title">Papperskorgen</div>
+      </div>
+      <div id="submenu-trash" class="submenu">
+        <div class="game-grid">
+          <div class="game-tile" onclick="launchGame('trash/old-design/')">
+            <div>🏎️</div>
+            <div class="game-title">...a racing game?</div>
+          </div>
+          <div class="game-tile" onclick="launchGame('trash/lockedboss/')">
+  <div>🔒</div>
+  <div class="game-title">Locked Boss</div>
+</div><div class="game-tile" onclick="launchGame('trash/fpsboss/')">
+  <div>🔫</div>
+  <div class="game-title">FPS Boss</div>
+</div>
+    <div class="game-tile" onclick="launchGame('trash/phasingrooks/')">
+      <div>♜👻V1</div>
+      <div class="game-title">Phasing Rooks</div>
+    </div>
+    <div class="game-tile" onclick="launchGame('trash/check/')">
+      <div>♜👻V2</div>
+      <div class="game-title"> Phasing Rooks + Rules + Checkmate working as (more but also less depending on game mode) intended.</div>
+    </div>
+ <div class="game-tile" onclick="launchGame('trash/hyperboss/')">
+  <div>🔫</div>
+  <div class="game-title">Hyper Boss</div>
+  <div class="game-title">He's fast.</div>
+</div>
+
+<div class="game-tile" onclick="launchGame('trash/roarboss/')">
+  <div>🔫</div>
+  <div class="game-title">Roar Boss</div>
+  <div class="game-title">He's roaring.</div>
+</div>
+<div class="game-tile" onclick="launchGame('trash/intro/')">
+  <div>🎲♜👻</div>
+  <div class="game-title">Dice Chess: Ghost Edition</div>
+  <div class="game-title">Intro</div>
+</div>
+<div class="game-tile" onclick="launchGame('trash/toomuch/')">
+  <div>🤺</div>
+  <div class="game-title">Hardest Souls</div>
+  <div class="game-title"></div>
+</div>
+
+
+
+
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Features Section -->
+  <section class="features-section">
+    <h2>✨ Up and Coming Features</h2>
+    <ul>
+      <li>🦑 Lovecraft TDS - Power ups, Bosses, New Game vs Unlocked (all Power Ups instantly available). Practice story telling and compelling narrative.</li>
+      <li>🕵️‍♂️ EGEM - More Goals and <strong style="color:limegreen;">More Modules (aka collapse terrain "under" Terrain module-click specific setting instead of drop Then drop - very customizable for player preference)</strong>. Unlimited potential.</li>
+      <li>🧊 Particle Power - Dash (code exists), Bosses (code exists), Traps/Hazards (code exists), General Polish. My favorite game. <strong><strong style="color:red;">Added manual sound settings if the player so choses, because Sound is an Art, and its not my forté. I do not even possess the patience to generate it even though games are 80% sound design.!</strong></li>
+      <li>⚔️ Arena Shooty - Implement actually animated enemies, Expand Power Ups system. I like the speed of it. <strong style="color:limegreen;">2025-07-27, managed to animate one sprite movement on stage 2 enemy using my newly built tool, it also functions as a "show the animation rolling" thingamajig, couldnt sleep 2025-07-28 so got up early and made a Gorgon boss because I knew I could do it.. and I could.</strong></li>
+      <li>🦧🍌 Memory - Pretty Finished, just add more animals. Nice simple peaceful.</li>
+      <li>🦧🕹️ Animal Memory Arcade - Arcade-ify even more. Console on PC. </li>
+      <li>🌐 <span style="color:limegreen;">Add a "Papperskorgen" for scrapped designs I still like..maybe a Racing Game from v.0000001 of Animal Memory Arcade, "FPS Boss" controls are TIGHT and could be a standalone game etc etc and a "Demo" for sneak preview of updates.</span> Proper sound, soundtracks, sound effects and scene-specific ambience for all games, obviously. A general polished tone on all games when finally "done"...FIX.THE.ASPECT.RATIO👏.. and fonts!</li>
+<li>
+  🎲♜👻 Dice Chess: Ghost Edition(s) – ...spent all of week 2 playing different variants, built the game on a bug, phasing rooks out, phasing queens and bishops are in. Very Addictive game... all 4 modes (Papperskorgen: 2 modes, gameshowcase: 2 modes) have merit, but they are all 4 different versions, due to different locking, phasing and checkmate mechanics... and the variables inside each change it even more.. help! The ghost in the machine got me good.<br><br>
+
+  🎲♜👻<strong><strong style="color:red;">V1.</strong>.</strong> A fun version, but unbalanced...<br><br>
+
+  🎲♜👻<strong><strong style="color:red;">V2.</strong></strong> More game modes, still "unbalanced", but rule-set working check mechanic. Still fun.<br><br>
+
+  🎲♜👻<strong style="color:limegreen;">V3a.</strong> The "final" version, it is impossible to lose a dice turn because it is noob friendly. A different game.<br><br>
+
+  🎲♜👻<strong style="color:limegreen;">V3b.</strong> The "final" version, you lose a dice turn, turning it into hardcore mode and... a different game.<li>👨‍💻 Code Clicker - you... just click.
+</li>
+</ul>
+</section>
+
+<!-- Tools Section -->
+<section class="features-section">
+  <h2>🛠️ Tools</h2>
+  <ul>
+    <li>🖼️ <strong>Sprite Animation with File Load & Save Row</strong> – Load any sprite sheet, adjust, save that row. I made this because I thought I needed it before I needed it, and I did. Animates any sheet like a movie.</li>
+    <li>⚙️ More tools invented soon, probably, possibly, hopefully.!</li>
+  </ul>
+</section>
+
+
+
+<!-- Credits Section -->
+<section class="features-section">
+  <h2>📜 Credits & Mentions</h2>
+  <ul>
+    <li>🎨 General Sprites & Art: <strong>Notepad and GTP</li>
+    <li>🎨 Sprites & Art: <strong>Gorgon Boss - https://free-game-assets.itch.io/free-gorgon-pixel-art-character-sprite-sheets and <a href="https://sora.com" target="_blank" rel="noopener noreferrer" style="color:#ffcc00;">SORA</a> Knight - https://free-game-assets.itch.io/free-fantasy-knight</strong></li>
+    <li>
+  🎵 Music: <strong>Lovecraft TDS Ambience – 
+  <a href="https://www.free-stock-music.com/aila-scott-solar-winds-cosmic-horror-atmosphere.html" target="_blank" rel="noopener noreferrer" style="color:#ffcc00;">
+    Solar Winds (Cosmic Horror Atmosphere) by Aila Scott
+  </a>
+  </strong> – 
+  <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener noreferrer" style="color:#ffcc00;">
+    CC BY 4.0
+  </a>
+</li>
+
+
+    <li>🎵 Music: Particle Power ,"🏎️...a racing game?", Gorgon Boss and Arena Shooty soundtrack (AI Generated) - <a href="https://suno.com/" target="_blank" rel="noopener noreferrer" style="color: #ffcc00;">Suno.com</a></li>
+<li>🎵 Music: Particle Power, Gorgon Boss and Arena Shoot sound effects (AI Generated) - <a href="https://elevenlabs.io/" target="_blank" rel="noopener noreferrer" style="color: #ffcc00;">Elevenlabs.io</a></li>
+    <li>🧠 Core Logic Ideas: <strong>Me + ChatGPT</strong></li>
+    <li>📦 Frameworks & Libs: <strong>Notepad</strong></li>
+    <li>
+  💡 Inspiration:
+  <div style="margin-top: 0.5em;">
+    <iframe width="100%" height="315" src="https://www.youtube-nocookie.com/embed/3DMZETkPieI"
+
+      title="YouTube video player" frameborder="0"
+      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+      allowfullscreen></iframe>
+  </div>
+</li>
+
+    <li>🧪 Extra thanks: <strong>Internet strangers with good feedback</strong></li>
+  </ul>
+</section>
+
+<!-- Dev Logg Section -->
+<section class="features-section">
+  <h2>📝 Dev logg</h2>
+  <ul>
+    <li><strong>2025-07-28:</strong> Added Dev logg section to site. First official post! Remember what you forget..! 🚀</li>
+    <li><strong>Phase One 2025-07-14-2025-07-28:</strong> Made the site, the proto games, coding structure no problem, sound alright-easy to paste everything in-hard to make and adjust..., animation? Started chugging along on the 27th and it will be a pain in the ass but making progress, might just do it for "Arena Shooty"... not my thing. </li>
+    <li><strong>Phase Two; depends on computer shittiness, polish and update existing-everything or real 3d work in "real" game engines.</strong> -.</li>
+    <li><strong>miniscule tinkering 2025-08-3 to 2025-08-05</strong> -</li>
+    <li><strong>-:</strong> -</li>
+  </ul>
+</section>
+
+
+
+  <!-- Modal -->
+  <div id="modal" class="modal">
+    <iframe id="gameFrame" src=""></iframe>
+    <button onclick="closeModal()">Close</button>
+  </div>
+
+  <script>
+    function launchGame(path) {
+      document.getElementById('gameFrame').src = path + 'index.html';
+      document.getElementById('modal').style.display = 'flex';
+    }
+    function closeModal() {
+      document.getElementById('gameFrame').src = '';
+      document.getElementById('modal').style.display = 'none';
+    }
+    function toggleSubmenu(key) {
+      const submenu = document.getElementById('submenu-' + key);
+      submenu.style.display = (submenu.style.display === 'block') ? 'none' : 'block';
+    }
+  </script>
+<div id="legal-firewall" style="
+  position: absolute; bottom:
+  bottom: 10px;
+  right: 10px;
+  background: rgba(0, 0, 0, 0.8);
+  color: #eee;
+  padding: 0.8em 1em;
+  font-size: 0.8em;
+  border-radius: 6px;
+  z-index: 1100;
+  max-width: 320px;
+  pointer-events: none;
+  user-select: none;
+  font-family: monospace, monospace;
+  line-height: 1.3;
+  ">
+  This is a hobby project - games and site are hobby projects provided “as-is” without warranty.<br />
+  All assets used under fair use or Creative Commons licenses.<br />
+  Music and Arts credits linked in Credits section.<br />
+  No commercial use intended.<br />
+  Please respect and h/t the creators.<br />
+   No personal data is collected - &copy; Phase 1: 2025-07-14 - 2025-07-29. Shipped 2025-07-29 (updated 2025-08-05).
+</div>
+<div id="computer-spec" style=" lol
+  position: absolute; bottom:
+  bottom: 10px;
+  right: 10px;
+  background: rgba(0, 0, 0, 0.8);
+  color: #eee;
+  padding: 0.8em 1em;
+  font-size: 0.8em;
+  border-radius: 6px;
+  z-index: 1100;
+  max-width: 320px;
+  pointer-events: none;
+  user-select: none;
+  font-family: monospace, monospace;
+  line-height: 1.3;
+  ">
+  My "computer"	LAPTOP-GRG39DF0
+Processor	Intel(R) Celeron(R) N4500 @ 1.10GHz   1.11 GHz
+Installerat RAM-minne	4,00 GB (3,78 GB går att använda)
+Systemtyp	64-bitars operativsystem, x64-baserad processor
+Hårddisk? Nej nej, där bor ju windows... 1.7 gig ledigt av 56.
+"Grafikkort" 512 MB Intel(R) UHD Graphics
+ 
+</div>
+<img src="your-gif.gif" alt="Spec GIF" style="
+  position: fixed;
+  bottom: 0;
+  left: 10px;
+  width: 120px;
+  border-radius: 6px;
+  z-index: 1099;
+  pointer-events: none;
+" />
+
+
+</body>
+</html>

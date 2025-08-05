@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<!-- Paste this where you want your minimap -->
+<div class="file-structure-minimap">
+  <div class="column">
+    <h3>HTML</h3>
+    <ul>
+      <li><strong>DOCTYPE &amp; &lt;html&gt; root</strong></li>
+      <li><strong>&lt;head&gt;</strong>
+        <ul>
+          <li>&lt;meta&gt; tags (charset, viewport)</li>
+          <li>&lt;title&gt;, favicon</li>
+          <li>External CSS links</li>
+          <li>Critical scripts (analytics, polyfills)</li>
+        </ul>
+      </li>
+      <li><strong>&lt;body&gt;</strong>
+        <ul>
+          <li>Header, nav, main, footer</li>
+          <li>Sections, components</li>
+          <li>Scripts at end (defer/async)</li>
+        </ul>
+      </li>
+      <li>Accessibility &amp; SEO attrs</li>
+    </ul>
+  </div>
+
+  <div class="column">
+    <h3>CSS</h3>
+    <ul>
+      <li><strong>Global styles / resets</strong></li>
+      <li><strong>Layout &amp; structure</strong></li>
+      <li><strong>UI components</strong></li>
+      <li><strong>Animations &amp; keyframes</strong></li>
+      <li><strong>Theme overrides</strong></li>
+    </ul>
+  </div>
+
+  <div class="column">
+    <h3>JavaScript</h3>
+    <ul>
+      <li><strong>Variables &amp; constants</strong></li>
+      <li><strong>Setup / Initialization</strong></li>
+      <li><strong>Core functions / logic</strong></li>
+      <li><strong>Event handlers</strong></li>
+      <li><strong>Utility functions</strong></li>
+      <li><strong>Modules / imports &amp; exports</strong></li>
+    </ul>
+  </div>
+</div>
+
+  <meta charset="UTF-8">
+  <title>Code Clicker Game</title>
+  <link rel="stylesheet" href="style.css" id="externalCSS">
+</head>
+<body>
+  <!-- Overlays -->
+  <div class="label html-label" onclick="showOverlay('html')">HTML</div>
+  <div class="label css-label" onclick="showOverlay('css')">CSS</div>
+  <div class="label js-label" onclick="showOverlay('js')">JS</div>
+
+  <h1>💻 Code Clicker</h1>
+  <p>Lines of Code: <span id="score">0</span></p>
+
+  <div id="game">
+    <button id="clickBtn">Write Code!</button>
+    <button id="upgradeClickBtn">Upgrade Click (×2) - Cost: 10</button>
+    <button id="upgradeAutoBtn">Hire Intern (Auto +1/s) - Cost: 50</button>
+    <button id="breakBtn">🔧Break Structure - 🂡HTML is a house of cards🂡</button>
+    <button id="fixBtn" disabled>🛠 Fix Structure</button>
+  </div>
+
+  <div id="overlayBox" class="overlay hidden">
+    <button id="closeOverlay">Close</button>
+    <div id="overlayContent"></div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>

@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Interactive Hazards Demo</title>
+  <style>
+    body { margin:0; overflow:hidden; background:#111; color:#fff; font-family:sans-serif; }
+    #ui { position:absolute; top:10px; left:10px; z-index:10; background:rgba(0,0,0,0.5); padding:8px; border-radius:6px; }
+    #ui div { margin-bottom:6px; }
+    .hit { color:#ff4444; }
+  </style>
+</head>
+<body>
+  <div id="ui">
+    <div id="info">Use WASD to move. Collide with hazards.</div>
+    <div id="status"></div>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.153.0/build/three.min.js"></script>
+  <script>
+    // scene setup
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(75, innerWidth/innerHeight, 0.1, 1000);
+    camera.position.set(0, 15, 15);
+    camera.lookAt(0,0,0);
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(innerWidth, innerHeight);
+    document.body.appendChild(renderer.domElement);
+    scene.add(new THREE.AmbientLight(0x888888));
+    const dirLight = new THREE.DirectionalLight(0xffffff,1);
+    dirLight.position.set(5,10,7);
+    scene.add(dirLight);
+
+    // floor
+    const floor = new THREE.Mesh(
+      new THREE.PlaneGeometry(50,50),
+      new THREE.MeshStandardMaterial({ color:0x333333 })
+    );
+    floor.rotation.x = -Math.PI/2;
+    scene.add(floor);
+
+    // hazards with descriptions
+    const traps = [
+      { mesh: new THREE.Mesh(
+          new THREE.CircleGeometry(5,32),
+          new THREE.MeshBasicMaterial({ color:0xff3300, opacity:0.7, transparent:true })
+        ), type: '🔥 Ember Pit', desc: 'Damage over time' },
+      { mesh: new THREE.Mesh(
+          new THREE.CircleGeometry(5,32),
+          new THREE.MeshBasicMaterial({ color:0x3399ff, opacity:0.5, transparent:true })
+        ), type: '❄️ Ice Glide', desc: 'Slippery surface' },
+      { mesh: new THREE.Mesh(
+          new THREE.RingGeometry(3,5,64),
+          new THREE.MeshBasicMaterial({ color:0xffff00, side: THREE.DoubleSide, opacity:0.6, transparent:true })
+        ), type: '⚡ Lightning Zone', desc: 'Delayed strike' },
+      { mesh: new THREE.Mesh(
+          new THREE.SphereGeometry(1.5,16,16),
+          new THREE.MeshBasicMaterial({ color:0x9933ff, opacity:0.8, transparent:true })
+        ), type: '🌀 Teleport Blob', desc: 'Random teleport' },
+      { mesh: new THREE.Mesh(
+          new THREE.SphereGeometry(2,16,16),
+          new THREE.MeshBasicMaterial({ color:0x000000 })
+        ), type: '🕳️ Black Hole', desc: 'Instant death' }
+    ];
+
+    traps.forEach((t,i) => {
+      const m = t.mesh;
+      m.rotation.x = -Math.PI/2;
+      m.position.set((i - 2)*12, 0.01, 0);
+      // compute bounding radius
+      m.geometry.computeBoundingSphere();
+      scene.add(m);
+    });
+
+    // player
+    const player = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.5,0.5,1,16),
+      new THREE.MeshStandardMaterial({ color: 0x00ff00 })
+    );
+    player.position.set(0,0.5,10);
+    scene.add(player);
+
+    // input
+    const keys = { w: false, a: false, s: false, d: false };
+    window.addEventListener('keydown', e => { if(keys.hasOwnProperty(e.key)) keys[e.key] = true; });
+    window.addEventListener('keyup', e => { if(keys.hasOwnProperty(e.key)) keys[e.key] = false; });
+
+    // UI
+    const statusDiv = document.getElementById('status');
+
+    // collision detection helper
+    function checkHazard() {
+      let hit = null;
+      traps.forEach(t => {
+        const dx = player.position.x - t.mesh.position.x;
+        const dz = player.position.z - t.mesh.position.z;
+        const dist = Math.sqrt(dx*dx + dz*dz);
+        const radius = t.mesh.geometry.boundingSphere.radius;
+        if (t.mesh.geometry.type === 'RingGeometry') {
+          if (dist > 3 && dist < 5) hit = t;
+        } else if (dist < radius) {
+          hit = t;
+        }
+      });
+      if(hit) {
+        statusDiv.innerHTML = `<span class='hit'>In ${hit.type}: ${hit.desc}</span>`;
+      } else {
+        statusDiv.textContent = '';
+      }
+    }
+
+    // animate
+    function animate() {
+      requestAnimationFrame(animate);
+      // move player
+      const speed = 0.2;
+      if(keys.w) player.position.z -= speed;
+      if(keys.s) player.position.z += speed;
+      if(keys.a) player.position.x -= speed;
+      if(keys.d) player.position.x += speed;
+      // Teleport Blob pulsate
+      const blob = traps[3].mesh;
+      const scale = 1 + Math.sin(Date.now()*0.005)*0.3;
+      blob.scale.setScalar(scale);
+      // Lightning Zone flicker
+      traps[2].mesh.material.opacity = 0.3 + Math.abs(Math.sin(Date.now()*0.02))*0.4;
+      checkHazard();
+      renderer.render(scene, camera);
+    }
+    animate();
+  </script>
+</body>
+</html>

@@ -1,0 +1,686 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Medieval Fantasy Arena Shooter</title>
+  <style>
+    body { margin: 0; overflow: hidden; background: #000; font-family: sans-serif; }
+    canvas { display: block; }
+/* ↓ NEW: pin the minimap to viewport bottom‑right ↓ */
+#minimap {
+  position: fixed;
+  bottom: 10px;
+  right: 10px;
+  background: rgba(0,0,0,0.6);
+  border: 2px solid white;
+  border-radius: 50%;
+  z-index: 10;
+}
+
+
+    #ui {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      font-size: 18px;
+      background: rgba(0,0,0,0.5);
+      color: white;
+      padding: 10px;
+      border-radius: 8px;
+      z-index: 10;
+    }
+
+    #gameOver, #overworld {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: white;
+      background: rgba(0,0,0,0.8);
+      padding: 30px;
+      border-radius: 12px;
+      z-index: 11;
+    }
+
+    #gameOver {
+      font-size: 36px;
+      display: none;
+      text-align: center;
+    }
+
+    #overworld {
+      display: none;
+      text-align: center;
+    }
+
+    .stage-button {
+      display: inline-block;
+      margin: 10px;
+      padding: 20px;
+      border: 2px solid white;
+      border-radius: 8px;
+      background: #222;
+      cursor: pointer;
+      font-size: 18px;
+      -  width: 100px;
++  width: 140px;      /* ↑ make all buttons wide enough for the longest names */
++  text-align: center;/* ↑ center‑align the text inside */
+
+    }
+
+    .stage-button:hover {
+      background: #444;
+    }
+
+    .disabled {
+      opacity: 0.3;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+<div id="ui"><canvas id="minimap" width="150" height="150"></canvas>
+
+
+  ❤️ Health: <span id="health">3</span><br>
+  🎯 Score: <span id="score">0</span><br>
+  🌊 Wave: <span id="wave">1</span><br>
+  🏰 Stage: <span id="stage">1</span>
+</div>
+
+<div id="gameOver">💀 Game Over 💀<br><br>Click to Restart</div>
+<!-- 🎛️ Settings Menu -->
+<div id="settingsMenu" style="display:none; position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); background:#111; color:white; padding:20px; border-radius:12px; z-index:12;">
+  <h3>⚙️ Settings</h3>
+  <label>🎵 Music Volume: <input type="range" id="musicSlider" min="0" max="1" step="0.01"></label><br><br>
+  <label>🔫 Shoot Volume: <input type="range" id="shootSlider" min="0" max="1" step="0.01"></label><br><br>
+  <label>💀 Enemy Volume: <input type="range" id="enemySlider" min="0" max="1" step="0.01"></label><br><br>
+  <button onclick="closeSettings()">Close</button>
+</div>
+
+<!-- ⚙️ Settings Button -->
+<button id="openSettings" style="position:fixed; top:10px; right:10px; z-index:11; font-size:16px;">⚙️</button>
+
+
+<div id="overworld">
+  <h2>🗺️ Choose Your Next Stage</h2>
+  <div id="stageButtons"></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.153.0/build/three.min.js"></script>
+<script>
+let scene, camera, renderer, player, floor;
+let keys = { w: false, a: false, s: false, d: false }, bullets = [], enemies = [], enemyBullets = [], powerups = [];
+let velocityY = 0;          // vertical velocity
+const gravity = -0.02;      // gravity pulling player down
+let jumping = false;        // is player in mid-air?
+const jumpStrength = 0.4;   // jump initial velocity
+
+let score = 0, health = 3, wave = 1, stage = 1, gameOver = false, canShoot = true, inOverworld = false;
+// === SOUND EFFECTS ===
+const sfxShoot = new Audio('shoot.mp3');
+const sfxEmberDeath = new Audio('emberDeath.mp3');
+const sfxFrostDeath = new Audio('frostDeath.mp3');
+
+// Optional: control volume
+sfxShoot.volume = 0.25;
+sfxEmberDeath.volume = 0.3;
+sfxFrostDeath.volume = 0.7;
+
+let shootCooldown = 300, playerSpeed = 0.1, powerupTimer = 0;
+let boss = null;
+
+const stageWaveCounts = [5, 6, 8, 9, 10];
+const stageNames = [
+  "Ember Pit",
+  "Frost Keep",
+  "Shadow Realm",
+  "Storm Citadel",
+  "Dragon’s Lair"
+];
+
+function getStageLabel(n) {
+  return stageNames[n - 1] || `Stage ${n}`;
+}
+
+const maxStage = stageWaveCounts.length;
+let unlockedStages = 1;
+
+const uiHealth = document.getElementById("health");const minimap = document.getElementById("minimap");
+const mapCtx = minimap.getContext("2d");
+const mapSize = 150;        // pixels
+const mapRange = 30;        // how much of the arena you can see around player
+
+const uiScore = document.getElementById("score");
+const uiWave = document.getElementById("wave");
+const uiStage = document.getElementById("stage");
+const gameOverDiv = document.getElementById("gameOver");
+const overworldDiv = document.getElementById("overworld");
+const stageButtonsDiv = document.getElementById("stageButtons");
+
+const arenaSize = 25;
+const clamp = (v, min, max) => Math.min(Math.max(v, min), max);
+const randPos = () => (Math.random() - 0.5) * 40;
+
+function init() {
+  scene = new THREE.Scene();
+  camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+  camera.position.set(0, 5, 10);
+  camera.lookAt(0, 0, 0);
+
+  renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  document.body.appendChild(renderer.domElement);
+
+  const light = new THREE.DirectionalLight(0xffffff, 1);
+  light.position.set(5, 10, 7);
+  scene.add(light, new THREE.AmbientLight(0x404040));
+
+  // Floor with volcanic/firey look for Stage 1
+  floor = new THREE.Mesh(
+    new THREE.PlaneGeometry(50, 50),
+    new THREE.MeshStandardMaterial({ 
+      color: 0x330000, // dark red base
+      emissive: 0x662200, // glowing ember look
+      emissiveIntensity: 0.5,
+      roughness: 0.8,
+      metalness: 0.1
+    })
+  );
+  floor.rotation.x = -Math.PI / 2;
+  scene.add(floor);
+
+  player = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 1, 16), new THREE.MeshStandardMaterial({ color: 0x00ff00 }));
+  player.position.y = 0.5;
+  scene.add(player);
+
+  openOverworld();
+  animate();
+}
+
+function openOverworld() {
+  inOverworld = true;
+  overworldDiv.style.display = "block";
+  stageButtonsDiv.innerHTML = "";
+  for (let i = 1; i <= maxStage; i++) {
+    const btn = document.createElement("div");
+    btn.textContent = getStageLabel(i);
+
+    btn.className = "stage-button";
+    if (i > unlockedStages) btn.classList.add("disabled");
+    else btn.onclick = () => startStage(i);
+    stageButtonsDiv.appendChild(btn);
+  }
+}
+
+function startStage(selectedStage) {
+  overworldDiv.style.display = "none";
+  inOverworld = false;
+  stage = selectedStage;
+  wave = 1;
+  resetArenaState();
+  spawnWave();
+  updateUI();
+}
+
+function resetArenaState() {
+  bullets.forEach(b => scene.remove(b));
+  enemies.forEach(e => scene.remove(e));
+  enemyBullets.forEach(e => scene.remove(e));
+  powerups.forEach(p => scene.remove(p));
+  if (boss) {
+    scene.remove(boss);
+    boss = null;
+  }
+  bullets = []; enemies = []; enemyBullets = []; powerups = [];
+  player.position.set(0, 0.5, 0);
+
+  // Update floor material color based on stage
+  if(stage === 1){
+    floor.material.color.set(0x330000);
+    floor.material.emissive.set(0x662200);
+    floor.material.emissiveIntensity = 0.5;
+  } else {
+    // Default gray floor for other stages (placeholder)
+    floor.material.color.set(0x333333);
+    floor.material.emissive.set(0x000000);
+    floor.material.emissiveIntensity = 0;
+  }
+}
+
+function updateUI() {
+  uiHealth.textContent = health;
+  uiScore.textContent = score;
+  uiWave.textContent = wave;
+  uiStage.textContent = getStageLabel(stage);
+}
+
+function spawnWave() {
+  const count = 5 + wave * 2;
+
+  let lavaMaterial;
+if (stage === 1) {
+  // Ember Pit → classic lava red
+  lavaMaterial = new THREE.MeshStandardMaterial({
+    color: 0xff3300,
+    emissive: 0xff5500,
+    emissiveIntensity: 0.8,
+    roughness: 0.6,
+    metalness: 0.3
+  });
+} else if (stage === 2) {
+  // Frost Keep → icy blue
+  lavaMaterial = new THREE.MeshStandardMaterial({
+    color: 0x3399ff,
+    emissive: 0x3366ff,
+    emissiveIntensity: 0.5,
+    roughness: 0.8,
+    metalness: 0.1
+  });
+} else if (stage === 3) {
+  // Shadow Realm → mystical purple
+  lavaMaterial = new THREE.MeshStandardMaterial({
+    color: 0x9933ff,
+    emissive: 0x6600cc,
+    emissiveIntensity: 0.6,
+    roughness: 0.7,
+    metalness: 0.2
+  });
+} else if (stage === 4) {
+  // Storm Citadel → bright storm white
+  lavaMaterial = new THREE.MeshStandardMaterial({
+    color: 0xffffff,
+    emissive: 0xcccccc,
+    emissiveIntensity: 0.4,
+    roughness: 0.5,
+    metalness: 0.3
+  });
+} else if (stage === 5) {
+  // Dragon’s Lair → deep black
+  lavaMaterial = new THREE.MeshStandardMaterial({
+    color: 0x000000,
+    emissive: 0x220022,
+    emissiveIntensity: 0.7,
+    roughness: 0.9,
+    metalness: 0.1
+  });
+} else {
+  // Fallback → gray
+  lavaMaterial = new THREE.MeshStandardMaterial({
+    color: 0x666666,
+    emissive: 0x444444,
+    emissiveIntensity: 0.3,
+    roughness: 0.7,
+    metalness: 0.2
+  });
+}
+
+
+
+  for (let i = 0; i < count; i++) {
+    const enemyGeometry = new THREE.IcosahedronGeometry(0.7, 1);
+    const enemy = new THREE.Mesh(enemyGeometry, lavaMaterial);
+    enemy.position.set(randPos(), 0.7, randPos());
+    scene.add(enemy);
+    enemies.push(enemy);
+
+    createEmberParticles(enemy);  // Add embers particles to enemy
+  }
+}
+
+function createEmberParticles(enemy) {
+  const particleCount = 30;
+  const geometry = new THREE.BufferGeometry();
+  const positions = new Float32Array(particleCount * 3);
+
+  for (let i = 0; i < particleCount; i++) {
+    // Start particles near enemy position with some random offset
+    positions[i * 3] = (Math.random() - 0.5) * 1.5;
+    positions[i * 3 + 1] = Math.random() * 1.5;
+    positions[i * 3 + 2] = (Math.random() - 0.5) * 1.5;
+  }
+
+  geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+
+  const material = new THREE.PointsMaterial({
+    color: 0xffaa33,
+    size: 0.1,
+    transparent: true,
+    opacity: 0.8,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+
+  const particles = new THREE.Points(geometry, material);
+  enemy.add(particles);
+  enemy.particles = particles; // store reference for animation
+}
+
+
+function spawnBoss() {
+  if (boss) return;
+  boss = new THREE.Mesh(new THREE.BoxGeometry(4, 4, 4), new THREE.MeshStandardMaterial({ color: 0x9900ff }));
+  boss.position.set(0, 2, 0);
+  scene.add(boss);
+}
+
+function shoot() {
+  if (!canShoot || inOverworld) return;
+  const bullet = new THREE.Mesh(new THREE.SphereGeometry(0.15, 8, 8), new THREE.MeshStandardMaterial({ color: 0xffff00 }));
+  bullet.position.copy(player.position);
+  const dir = new THREE.Vector3().subVectors(aimPoint, player.position).setY(0).normalize();
+  bullet.direction = dir;
+  bullets.push(bullet);
+  scene.add(bullet);
+  canShoot = false;
+  setTimeout(() => canShoot = true, shootCooldown);
+  // 🔊 Play shooting sound
+  sfxShoot.currentTime = 0;
+  sfxShoot.play();
+
+}
+
+function advanceStage() {
+  if (stage < maxStage) unlockedStages = Math.max(unlockedStages, stage + 1);
+  openOverworld();
+}
+
+function animate() {
+  requestAnimationFrame(animate);
+  if (gameOver || inOverworld) return;
+
+  // Movement
+  let dx = 0, dz = 0;
+  if (keys.w) dz -= playerSpeed;
+  if (keys.s) dz += playerSpeed;
+  if (keys.a) dx -= playerSpeed;
+  if (keys.d) dx += playerSpeed;
+  player.position.x = clamp(player.position.x + dx, -arenaSize, arenaSize);
+  player.position.z = clamp(player.position.z + dz, -arenaSize, arenaSize);
+// Jumping and gravity
+velocityY += gravity;                // apply gravity to vertical velocity
+player.position.y += velocityY;     // update vertical position
+
+if (player.position.y <= 0.5) {     // ground level (player half height)
+  player.position.y = 0.5;          // reset to ground level
+  velocityY = 0;                    // stop falling
+  jumping = false;                  // can jump again
+}
+
+
+  // Aim
+  raycaster.setFromCamera(mouse, camera);
+  const hit = raycaster.intersectObject(floor);
+  if (hit.length) {
+    aimPoint.copy(hit[0].point);
+    const a = Math.atan2(aimPoint.x - player.position.x, aimPoint.z - player.position.z);
+    player.rotation.y = a;
+  }
+
+  bullets.forEach((b, i) => {
+    b.position.addScaledVector(b.direction, 0.4);
+    if (b.position.length() > 100) {
+      scene.remove(b); bullets.splice(i, 1);
+    }
+  });
+
+  enemyBullets.forEach((b, i) => {
+    b.position.addScaledVector(b.direction, 0.15);
+    if (b.position.distanceTo(player.position) < 0.7) {
+      scene.remove(b); enemyBullets.splice(i, 1);
+      health--; uiHealth.textContent = health;
+      if (health <= 0) {
+        gameOver = true;
+        gameOverDiv.style.display = "block";
+      }
+    }
+    if (b.position.length() > 100) {
+      scene.remove(b); enemyBullets.splice(i, 1);
+    }
+  });
+
+  enemies.forEach((e, i) => {
+  // Existing movement code...
+  const dir = new THREE.Vector3().subVectors(player.position, e.position).setY(0).normalize();
+  e.position.addScaledVector(dir, 0.015);
+  if (Math.random() < 0.003) enemyShoot(e);
+
+  // Animate ember particles: make them float upward and reset
+  if (e.particles) {
+    const positions = e.particles.geometry.attributes.position.array;
+    for (let i = 0; i < positions.length; i += 3) {
+      positions[i + 1] += 0.01;  // move Y upwards
+      if (positions[i + 1] > 1.5) {
+        positions[i + 1] = 0;    // reset Y position
+      }
+    }
+    e.particles.geometry.attributes.position.needsUpdate = true;
+  }
+
+  bullets.forEach((b, j) => {
+    if (b.position.distanceTo(e.position) < 0.8) {
+          // 🔊 Play correct enemy death sound
+    if (stage === 1) {
+      sfxEmberDeath.currentTime = 0;
+      sfxEmberDeath.play();
+    } else if (stage === 2) {
+      sfxFrostDeath.currentTime = 0;
+      sfxFrostDeath.play();
+    }
+
+    scene.remove(e);
+
+      enemies.splice(i, 1);
+      scene.remove(b);
+      bullets.splice(j, 1);
+      score++;
+      uiScore.textContent = score;
+    }
+  });
+});
+
+
+  if (boss) {
+    bullets.forEach((b, i) => {
+      if (b.position.distanceTo(boss.position) < 2) {
+        scene.remove(b); bullets.splice(i, 1);
+        boss.hits = (boss.hits || 0) + 1;
+        if (boss.hits >= 20) {
+          scene.remove(boss);
+          boss = null;
+          advanceStage();
+        }
+      }
+    });
+  }
+
+  if (enemies.length === 0 && !boss) {
+    if (wave < stageWaveCounts[stage - 1]) {
+      wave++;
+      uiWave.textContent = wave;
+      spawnWave();
+      if (Math.random() < 0.5) spawnPowerup();
+    } else {
+      spawnBoss();
+    }
+  }
+
+  powerups.forEach((p, i) => {
+    if (p.position.distanceTo(player.position) < 1) {
+      scene.remove(p); powerups.splice(i, 1);
+      if (p.powerType === "health") {
+        health = Math.min(health + 1, 5); uiHealth.textContent = health;
+      } else if (p.powerType === "rapid") {
+        shootCooldown = 100;
+        powerupTimer = Date.now() + 5000;
+      }
+    }
+  });
+
+  if (powerupTimer && Date.now() > powerupTimer) {
+    shootCooldown = 300;
+    powerupTimer = 0;
+  }
+
+  camera.position.lerp(new THREE.Vector3(player.position.x, 6, player.position.z + 10), 0.05);
+  camera.lookAt(player.position);drawMinimap(); // draw radar/minimap
+
+  renderer.render(scene, camera);
+}function drawMinimap() {
+  mapCtx.clearRect(0, 0, mapSize, mapSize);
+  
+  const cx = mapSize / 2;
+  const cy = mapSize / 2;
+
+  // Draw circular border
+  mapCtx.beginPath();
+  mapCtx.arc(cx, cy, mapSize / 2 - 2, 0, Math.PI * 2);
+  mapCtx.strokeStyle = "white";
+  mapCtx.stroke();
+
+  // Player: green dot in center
+  mapCtx.fillStyle = "lime";
+  mapCtx.beginPath();
+  mapCtx.arc(cx, cy, 4, 0, Math.PI * 2);
+  mapCtx.fill();
+
+  // Enemies: red dots
+  mapCtx.fillStyle = "red";
+  enemies.forEach(e => {
+    const dx = e.position.x - player.position.x;
+    const dz = e.position.z - player.position.z;
+    const mx = cx + (dx / mapRange) * cx;
+    const my = cy + (dz / mapRange) * cy;
+
+    mapCtx.beginPath();
+    mapCtx.arc(mx, my, 3, 0, Math.PI * 2);
+    mapCtx.fill();
+  });
+
+  // Powerups: magenta dots
+  mapCtx.fillStyle = "magenta";
+  powerups.forEach(p => {
+    const dx = p.position.x - player.position.x;
+    const dz = p.position.z - player.position.z;
+    const mx = cx + (dx / mapRange) * cx;
+    const my = cy + (dz / mapRange) * cy;
+
+    mapCtx.beginPath();
+    mapCtx.arc(mx, my, 2, 0, Math.PI * 2);
+    mapCtx.fill();
+  });
+}
+
+
+// Enemy shoots fireball for Stage 1 theme
+function enemyShoot(enemy) {
+  const fireballColor = (stage === 1) ? 0xff6600 : 0x00ffff; // orange fireball for stage 1, cyan otherwise
+  const b = new THREE.Mesh(new THREE.SphereGeometry(0.15, 6, 6), new THREE.MeshStandardMaterial({ color: fireballColor, emissive: 0xff3300, emissiveIntensity: 0.7 }));
+  b.position.copy(enemy.position);
+  const dir = new THREE.Vector3().subVectors(player.position, enemy.position).setY(0).normalize();
+  b.direction = dir;
+  enemyBullets.push(b);
+  scene.add(b);
+}
+
+function spawnPowerup() {
+  const type = Math.random() < 0.5 ? "health" : "rapid";
+  const color = type === "health" ? 0x00ffcc : 0xff00ff;
+  const pu = new THREE.Mesh(new THREE.IcosahedronGeometry(0.4, 0), new THREE.MeshStandardMaterial({ color }));
+  pu.position.set(randPos(), 0.5, randPos());
+  pu.powerType = type;
+  scene.add(pu);
+  powerups.push(pu);
+}
+
+// Controls & mouse
+const keysDown = {};
+window.addEventListener("keydown", e => {
+  if (inOverworld || gameOver) return;
+  const key = e.key.toLowerCase();
+  keys[key] = true;
+
+  // Spacebar triggers jump if player is not already jumping
+  if (key === " " && !jumping) {
+    velocityY = jumpStrength;
+    jumping = true;
+  }
+});
+
+window.addEventListener("keyup", e => {
+  keys[e.key.toLowerCase()] = false;
+});
+window.addEventListener("click", () => {
+  if (bgMusic.paused) bgMusic.play(); // start music if not already playing
+
+  if (gameOver) {
+    gameOver = false;
+    health = 3; score = 0; wave = 1; stage = 1;
+    updateUI();
+    resetArenaState();
+    spawnWave();
+    gameOverDiv.style.display = "none";
+  } else if (!inOverworld) {
+    shoot();
+  }
+});
+
+
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
+let aimPoint = new THREE.Vector3();
+
+window.addEventListener("mousemove", e => {
+  mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+  mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+});
+
+window.addEventListener("resize", () => {
+  camera.aspect = window.innerWidth/window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// Background music setup
+const bgMusic = new Audio("particlepower.mp3");
+bgMusic.loop = true;
+bgMusic.volume = 1; // Adjust volume (0.0 to 1.0)
+bgMusic.play().catch(e => {
+  // Most browsers require user interaction before playing audio
+  console.log("Background music will start after user interaction.");
+});
+
+
+init();
+
+// SETTINGS MENU LOGIC
+const settingsMenu = document.getElementById("settingsMenu");
+const musicSlider = document.getElementById("musicSlider");
+const shootSlider = document.getElementById("shootSlider");
+const enemySlider = document.getElementById("enemySlider");
+
+// Open settings when ⚙️ button is clicked
+document.getElementById("openSettings").addEventListener("click", () => {
+  settingsMenu.style.display = "block";
+
+  // Set sliders to current volume values
+  musicSlider.value = bgMusic.volume;
+  shootSlider.value = sfxShoot.volume;
+  enemySlider.value = sfxEmberDeath.volume;
+});
+
+// Close settings and apply changes
+function closeSettings() {
+  settingsMenu.style.display = "none";
+
+  // Apply new volumes
+  bgMusic.volume = parseFloat(musicSlider.value);
+  sfxShoot.volume = parseFloat(shootSlider.value);
+  sfxEmberDeath.volume = parseFloat(enemySlider.value);
+  sfxFrostDeath.volume = parseFloat(enemySlider.value);
+}
+
+</script>
+</body>
+</html>

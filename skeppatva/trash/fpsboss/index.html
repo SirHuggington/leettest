@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Boss Fight Demo — Right-Click Look + Crosshair</title>
+  <style>
+    body { margin: 0; overflow: hidden; background: #000; color: #fff; font-family: sans-serif; }
+    #health, #score, #bossHealth {
+      position: absolute; padding: 5px 10px; background: rgba(0,0,0,0.5); font-size: 16px;
+    }
+    #health { top: 10px; left: 10px; }
+    #score { top: 10px; right: 10px; }
+    #bossHealth { bottom: 10px; left: 10px; }
+    #overlay {
+      position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(0,0,0,0.7); color: #fff; font-size: 48px; cursor: pointer;
+      text-align: center;
+    }
+    #overlay.hidden { display: none; }
+    #crosshair {
+      position: absolute; top: 50%; left: 50%;
+      width: 20px; height: 20px; margin: -10px 0 0 -10px;
+      pointer-events: none;
+      background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"><circle cx="10" cy="10" r="1.5" fill="white"/><line x1="10" y1="0" x2="10" y2="6" stroke="white" stroke-width="1"/><line x1="10" y1="14" x2="10" y2="20" stroke="white" stroke-width="1"/><line x1="0" y1="10" x2="6" y2="10" stroke="white" stroke-width="1"/><line x1="14" y1="10" x2="20" y2="10" stroke="white" stroke-width="1"/></svg>');
+    }
+  </style>
+</head>
+<body>
+  <div id="health">Health: 500</div>
+  <div id="score">Score: 0</div>
+  <div id="bossHealth">Boss: 1000</div>
+  <div id="overlay" class="hidden">Game Over<br><small>Click to Restart</small></div>
+  <div id="crosshair"></div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
+  <script>
+    let scene, camera, renderer, clock;
+    let player = { health: 100, score: 0, pos: new THREE.Vector3(), vel: new THREE.Vector3(), onGround: true };
+    let boss, bossMaterial, bossHealth = 1000, bossHitTime = 0, bossFadeTime = 0;
+    let bossDashCD = 0, bossSpinCD = 5;
+    let bullets = [], bossBullets = [];
+    let keys = {};
+    let moveSpeed = 0.1, dashSpeed = 2.0;
+    let gravity = 0.02, jumpSpeed = 0.3;
+    let yaw = 0, pitch = 0;
+    let canLook = false, gameOver = false;
+    const healthDiv = document.getElementById('health');
+    const scoreDiv = document.getElementById('score');
+    const bossHealthDiv = document.getElementById('bossHealth');
+    const overlay = document.getElementById('overlay');
+    const crosshair = document.getElementById('crosshair');
+
+    init();
+    requestAnimationFrame(animate);
+
+    function init() {
+      scene = new THREE.Scene();
+      camera = new THREE.PerspectiveCamera(75, innerWidth/innerHeight, 0.1, 1000);
+      camera.position.set(0, 1.6, 0);
+      renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(innerWidth, innerHeight);
+      document.body.appendChild(renderer.domElement);
+      clock = new THREE.Clock();
+
+      // Lights & ground
+      const dirLight = new THREE.DirectionalLight(0xffffff, 1);
+      dirLight.position.set(5, 10, 7.5);
+      scene.add(dirLight, new THREE.AmbientLight(0x404040));
+      const ground = new THREE.Mesh(new THREE.PlaneGeometry(100,100), new THREE.MeshPhongMaterial({ color: 0x222222 }));
+      ground.rotation.x = -Math.PI/2;
+      scene.add(ground);
+
+      // Boss setup
+      bossMaterial = new THREE.MeshPhongMaterial({ color: 0x550000, emissive: 0x770000, emissiveIntensity: 1, transparent: true });
+      boss = new THREE.Mesh(new THREE.SphereGeometry(1.5, 16, 16), bossMaterial);
+      boss.position.set(0,1.5,-30);
+      scene.add(boss);
+
+      // Listeners
+      window.addEventListener('resize', onResize);
+      document.addEventListener('keydown', e => keys[e.code]=true);
+      document.addEventListener('keyup', e => keys[e.code]=false);
+      document.addEventListener('mousedown', e => {
+        if(e.button === 2) {
+          document.body.requestPointerLock();
+        } else shoot();
+      });
+      document.addEventListener('mouseup', e => {
+        if(e.button === 2) {
+          document.exitPointerLock();
+        }
+      });
+      document.addEventListener('pointerlockchange', () => {
+        canLook = (document.pointerLockElement === document.body);
+      });
+      document.addEventListener('mousemove', e => {
+        if(canLook && !gameOver) {
+          yaw -= e.movementX * 0.002;
+          pitch -= e.movementY * 0.002;
+          pitch = Math.max(-Math.PI/2, Math.min(Math.PI/2, pitch));
+        }
+      });
+      overlay.addEventListener('click', () => location.reload());
+      renderer.domElement.addEventListener('contextmenu', e => e.preventDefault());
+    }
+
+    function onResize() {
+      camera.aspect = innerWidth/innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(innerWidth, innerHeight);
+    }
+
+    function shoot() {
+      if(gameOver) return;
+      const bullet = new THREE.Mesh(new THREE.SphereGeometry(0.1,8,8), new THREE.MeshBasicMaterial({ color: 0xffff00 }));
+      bullet.position.copy(camera.position);
+      const dir = new THREE.Vector3();
+      camera.getWorldDirection(dir);
+      bullet.userData = { vel: dir.multiplyScalar(1) };
+      bullets.push(bullet);
+      scene.add(bullet);
+    }
+
+    function animate() {
+      const dt = clock.getDelta();
+      if(!gameOver) {
+        updatePlayer(dt);
+        updateBoss(dt);
+        updateBullets(dt);
+        updateUI();
+      }
+      renderer.render(scene, camera);
+      requestAnimationFrame(animate);
+    }
+
+    function updatePlayer(dt) {
+      const eY = new THREE.Euler(0, yaw, 0);
+      const fwd = new THREE.Vector3(0,0,-1).applyEuler(eY);
+      const right = new THREE.Vector3(1,0,0).applyEuler(eY);
+      if(keys['KeyW']) player.pos.add(fwd.clone().multiplyScalar(moveSpeed));
+      if(keys['KeyS']) player.pos.add(fwd.clone().multiplyScalar(-moveSpeed));
+      if(keys['KeyA']) player.pos.add(right.clone().multiplyScalar(-moveSpeed));
+      if(keys['KeyD']) player.pos.add(right.clone().multiplyScalar(moveSpeed));
+      if(keys['Space'] && player.onGround) {
+        player.vel.y = jumpSpeed;
+        player.onGround = false;
+      }
+      player.vel.y -= gravity;
+      player.pos.y += player.vel.y;
+      if(player.pos.y <= 0) {
+        player.pos.y = 0;
+        player.vel.y = 0;
+        player.onGround = true;
+      }
+      camera.position.copy(player.pos).add(new THREE.Vector3(0,1.6,0));
+      camera.quaternion.setFromEuler(new THREE.Euler(pitch, yaw, 0, 'YXZ'));
+    }
+
+    function updateBoss(dt) {
+      if(bossHealth <= 0) {
+        bossFadeTime = bossFadeTime || 2.0;
+        bossFadeTime -= dt;
+        bossMaterial.opacity = Math.max(0, bossFadeTime / 2);
+        if(bossFadeTime <= 0 && boss) {
+          scene.remove(boss);
+          boss = null;
+          if(!victory) {
+            victory = gameOver = true;
+            overlay.innerHTML = 'Victory!<br><small>Click to Restart</small>';
+            overlay.classList.remove('hidden');
+          }
+        }
+        return;
+      }
+      // Emissive breathe
+      bossMaterial.emissiveIntensity = 1 + Math.sin(clock.getElapsedTime() * 3) * 0.5;
+      if(bossHitTime > 0) {
+        bossHitTime -= dt;
+        bossMaterial.opacity = Math.random() * 0.5 + 0.5;
+      } else bossMaterial.opacity = 1.0;
+
+      // Chase
+      if(!boss.userData.dash) {
+        const dir = new THREE.Vector3(player.pos.x - boss.position.x, 0, player.pos.z - boss.position.z).normalize();
+        boss.position.add(dir.multiplyScalar(moveSpeed * 0.5));
+        bossDashCD -= dt;
+        if(bossDashCD <= 0) {
+          boss.userData.dash = true;
+          boss.userData.dashDir = dir.clone();
+          boss.userData.dashTime = 0.3;
+          bossDashCD = 5 + Math.random() * 3;
+        }
+      } else {
+        boss.userData.dashTime -= dt;
+        boss.position.add(boss.userData.dashDir.clone().multiplyScalar(dashSpeed));
+        if(boss.userData.dashTime <= 0) boss.userData.dash = false;
+      }
+
+      bossSpinCD -= dt;
+      if(bossSpinCD <= 0) {
+        const cnt = 8;
+        for(let i=0; i<cnt; i++) {
+          const angle = (i / cnt) * Math.PI * 2;
+          const b = new THREE.Mesh(new THREE.SphereGeometry(0.1,8,8), new THREE.MeshBasicMaterial({ color: 0x00ff00 }));
+          b.position.copy(boss.position);
+          b.userData = { vel: new THREE.Vector3(Math.cos(angle),0,Math.sin(angle)).multiplyScalar(0.5) };
+          bossBullets.push(b);
+          scene.add(b);
+        }
+        bossSpinCD = 7 + Math.random() * 3;
+      }
+
+      // Collision with player
+      if(boss.position.distanceTo(new THREE.Vector3(player.pos.x, boss.position.y, player.pos.z)) < 1.5) {
+        player.health -= 10;
+        player.pos.set(0,0,0);
+        if(player.health <= 0 && !gameOver) {
+          player.health = 0;
+          gameOver = true;
+          overlay.innerHTML = 'Game Over<br><small>Click to Restart</small>';
+          overlay.classList.remove('hidden');
+        }
+      }
+    }
+
+    function updateBullets(dt) {
+      bullets.forEach((b, i) => {
+        b.position.add(b.userData.vel.clone().multiplyScalar(dt * 50));
+        if(!boss || b.position.distanceTo(boss.position) > 100) scene.remove(b), bullets.splice(i,1);
+        else if(b.position.distanceTo(boss.position) < 1.5) {
+          scene.remove(b); bullets.splice(i,1);
+          bossHealth -= 10; player.score += 10; bossHitTime = 0.2;
+          if(bossHealth < 0) bossHealth = 0;
+        }
+      });
+      bossBullets.forEach((b, i) => {
+        b.position.add(b.userData.vel.clone().multiplyScalar(dt * 50));
+        const camPos = new THREE.Vector3(player.pos.x, player.pos.y + 1.6, player.pos.z);
+        if(b.position.distanceTo(camPos) < 0.5) {
+          scene.remove(b);
+          bossBullets.splice(i,1);
+          player.health -= 5;
+          if(player.health <= 0 && !gameOver) {
+            player.health = 0;
+            gameOver = true;
+            overlay.innerHTML = 'Game Over<br><small>Click to Restart</small>';
+            overlay.classList.remove('hidden');
+          }
+        } else if(b.position.distanceTo(camPos) > 100) {
+          scene.remove(b);
+          bossBullets.splice(i,1);
+        }
+      });
+    }
+
+    function updateUI() {
+      healthDiv.textContent = 'Health: ' + player.health;
+      scoreDiv.textContent = 'Score: ' + player.score;
+      bossHealthDiv.textContent = 'Boss: ' + bossHealth;
+    }
+  </script>
+</body>
+</html>

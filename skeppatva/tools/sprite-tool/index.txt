@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Dynamic Sprite Animation with Frame Size Inputs</title>
+  <style>
+    canvas {
+      background: #111;
+      display: block;
+      margin: 20px auto;
+      border: 2px solid lime;
+    }
+    body {
+      color: white;
+      font-family: monospace;
+      text-align: center;
+      background: #000;
+    }
+    label {
+      display: inline-block;
+      margin: 0 10px;
+    }
+    input[type=number] {
+      width: 60px;
+      font-size: 16px;
+      text-align: center;
+    }
+    button {
+      font-size: 16px;
+      padding: 6px 12px;
+      margin-top: 10px;
+      cursor: pointer;
+      background-color: #222;
+      color: lime;
+      border: 2px solid lime;
+      border-radius: 4px;
+      transition: background-color 0.2s;
+    }
+    button:hover {
+      background-color: lime;
+      color: #000;
+    }
+  </style>
+</head>
+<body>
+  <h1>🎮 Sprite Animation with Frame Size Inputs</h1>
+
+  <div>
+    <label>
+      Frame Width:
+      <input type="number" id="frameWidthInput" min="1" value="64" />
+    </label>
+    <label>
+      Frame Height:
+      <input type="number" id="frameHeightInput" min="1" value="64" />
+    </label>
+  </div>
+
+  <button id="saveRowBtn">💾 Save Row</button>
+
+  <p>Use ⬆️⬇️ to change row, press <b>F</b> to toggle scale mode</p>
+  <p>Current Row: <span id="rowDisplay">0</span> | Scale Mode: <span id="modeDisplay">Fit</span></p>
+  <canvas id="gameCanvas" width="256" height="256"></canvas>
+
+  <script>
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+
+    const rowDisplay = document.getElementById("rowDisplay");
+    const modeDisplay = document.getElementById("modeDisplay");
+    const frameWidthInput = document.getElementById("frameWidthInput");
+    const frameHeightInput = document.getElementById("frameHeightInput");
+    const saveRowBtn = document.getElementById("saveRowBtn");
+
+    const fps = 12;
+
+    let spriteSheet = new Image();
+    spriteSheet.src = "shadow_dog.png"; // Replace with your PNG path!
+
+    let frameWidth = parseInt(frameWidthInput.value, 10);
+    let frameHeight = parseInt(frameHeightInput.value, 10);
+    let totalFrames = 0;
+    let totalRows = 0;
+    let currentFrame = 0;
+    let walkRow = 0;
+    let lastTime = 0;
+    let scaleMode = 'fit';
+    let animationRunning = false;
+
+    function resetAnimation() {
+      frameWidth = parseInt(frameWidthInput.value, 10);
+      frameHeight = parseInt(frameHeightInput.value, 10);
+
+      if (isNaN(frameWidth) || frameWidth <= 0) frameWidth = 64;
+      if (isNaN(frameHeight) || frameHeight <= 0) frameHeight = 64;
+
+      if (!spriteSheet.complete) {
+        // Wait for image load then init
+        spriteSheet.onload = () => initAnimation();
+      } else {
+        initAnimation();
+      }
+    }
+
+    function initAnimation() {
+      totalFrames = Math.floor(spriteSheet.width / frameWidth);
+      totalRows = Math.floor(spriteSheet.height / frameHeight);
+
+      if (totalFrames < 1) totalFrames = 1;
+      if (totalRows < 1) totalRows = 1;
+
+      if (walkRow >= totalRows) walkRow = totalRows - 1;
+      rowDisplay.textContent = walkRow;
+
+      if (!animationRunning) {
+        animationRunning = true;
+        requestAnimationFrame(animate);
+      }
+    }
+
+    function drawFrame(frameX, frameY) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      if (scaleMode === 'fit') {
+        const scale = Math.min(canvas.width / frameWidth, canvas.height / frameHeight);
+        const drawWidth = frameWidth * scale;
+        const drawHeight = frameHeight * scale;
+        const drawX = (canvas.width - drawWidth) / 2;
+        const drawY = (canvas.height - drawHeight) / 2;
+
+        ctx.drawImage(
+          spriteSheet,
+          frameX * frameWidth,
+          frameY * frameHeight,
+          frameWidth,
+          frameHeight,
+          drawX,
+          drawY,
+          drawWidth,
+          drawHeight
+        );
+      } else { // stretch mode
+        ctx.drawImage(
+          spriteSheet,
+          frameX * frameWidth,
+          frameY * frameHeight,
+          frameWidth,
+          frameHeight,
+          0,
+          0,
+          canvas.width,
+          canvas.height
+        );
+      }
+    }
+
+    function animate(timestamp) {
+      if (!lastTime) lastTime = timestamp;
+      const delta = timestamp - lastTime;
+
+      if (delta > 1000 / fps) {
+        currentFrame = (currentFrame + 1) % totalFrames;
+        lastTime = timestamp;
+      }
+
+      drawFrame(currentFrame, walkRow);
+      requestAnimationFrame(animate);
+    }
+
+    window.addEventListener("keydown", e => {
+      if (e.key === "ArrowUp") {
+        walkRow = (walkRow + 1) % totalRows;
+        rowDisplay.textContent = walkRow;
+      } else if (e.key === "ArrowDown") {
+        walkRow = (walkRow - 1 + totalRows) % totalRows;
+        rowDisplay.textContent = walkRow;
+      } else if (e.key.toLowerCase() === "f") {
+        scaleMode = scaleMode === 'fit' ? 'stretch' : 'fit';
+        modeDisplay.textContent = scaleMode.charAt(0).toUpperCase() + scaleMode.slice(1);
+      }
+    });
+
+    frameWidthInput.addEventListener("change", resetAnimation);
+    frameWidthInput.addEventListener("keyup", e => {
+      if (e.key === "Enter") resetAnimation();
+    });
+
+    frameHeightInput.addEventListener("change", resetAnimation);
+    frameHeightInput.addEventListener("keyup", e => {
+      if (e.key === "Enter") resetAnimation();
+    });
+
+    saveRowBtn.addEventListener("click", () => {
+      if (!spriteSheet.complete) {
+        alert("Sprite sheet not loaded yet!");
+        return;
+      }
+
+      // Create an offscreen canvas sized for full row width & frame height
+      const offCanvas = document.createElement("canvas");
+      offCanvas.width = frameWidth * totalFrames;
+      offCanvas.height = frameHeight;
+      const offCtx = offCanvas.getContext("2d");
+
+      // Draw each frame side-by-side from the selected row
+      for (let i = 0; i < totalFrames; i++) {
+        offCtx.drawImage(
+          spriteSheet,
+          i * frameWidth,
+          walkRow * frameHeight,
+          frameWidth,
+          frameHeight,
+          i * frameWidth,
+          0,
+          frameWidth,
+          frameHeight
+        );
+      }
+
+      // Create a PNG data URL and trigger download
+      offCanvas.toBlob(blob => {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `sprite_row_${walkRow}.png`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      });
+    });
+
+    // Load the sprite image, then start animation
+    spriteSheet.onload = () => {
+      resetAnimation();
+    };
+  </script>
+</body>
+</html>

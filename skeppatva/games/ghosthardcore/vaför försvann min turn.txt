@@ -1,0 +1,6 @@
+"No valid moves for rolled piece. Turn skipped."
+
+Enkelt. Du råkade rulla en illegal turn IE ett torn, som är blocked in från start... 
+
+Feature not a bug: Tärningen har talat.
+

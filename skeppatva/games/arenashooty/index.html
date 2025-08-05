@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Medieval Fantasy Arena Shooter with Overworld</title>
+  <style>
+    body, html {
+      margin: 0; padding: 0; overflow: hidden;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: #111; color: #eee;
+    }
+    #ui { position: absolute; top:10px; left:10px;
+      background: rgba(0,0,0,0.6); padding:10px 14px; border-radius:8px;
+      max-width:350px; z-index:10;
+    }
+    #mapCanvas, #arenaCanvas {
+      display:block; background:#222; cursor:pointer;
+    }
+    #arenaCanvas {
+      display:none; position:absolute; top:0; left:0;
+    }
+    #arenaScreen {
+      display:none; position:absolute;
+      top:0; left:0; right:0; bottom:0;
+      background:#000; color:#eee;
+      display:flex; flex-direction:column;
+      align-items:center; justify-content:flex-start;
+      font-size:18px; padding:20px;
+    }
+    #arenaInfo { margin-bottom:12px; font-size:20px; }
+    #arenaCompleteBtn {
+      margin-top:12px; padding:12px 30px; font-size:20px;
+      border:none; border-radius:10px;
+      background:#44aa44; color:white; cursor:pointer;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="ui">
+    <div id="storyText">Welcome, brave hero! Select an arena to fight.</div>
+  </div>
+
+  <canvas id="mapCanvas" width="800" height="600"></canvas>
+
+  <div id="arenaScreen">
+    <div id="arenaInfo">Arena Info</div>
+    <canvas id="arenaCanvas" width="800" height="600" tabindex="0"></canvas>
+    <button id="arenaCompleteBtn">Complete Arena (Cheat)</button>
+  </div>
+
+  <script>
+  (() => {
+    // ─── Load images ───
+    const enemyImageDefault = new Image();
+    enemyImageDefault.src = 'troll.png';
+    const enemyImageForest  = new Image();
+    enemyImageForest.src  = 'medusa.png';
+
+    // ─── Canvas & UI setup ───
+    const mapCanvas      = document.getElementById('mapCanvas');
+    const mapCtx         = mapCanvas.getContext('2d');
+    const storyText      = document.getElementById('storyText');
+    const arenaScreen    = document.getElementById('arenaScreen');
+    const arenaInfo      = document.getElementById('arenaInfo');
+    const arenaCompleteBtn = document.getElementById('arenaCompleteBtn');
+    const arenaCanvas    = document.getElementById('arenaCanvas');
+    const arenaCtx       = arenaCanvas.getContext('2d');
+
+    // ─── World/Arena data ───
+    const arenas = [
+      { id:1, x:150, y:500, unlocked:true,  name:"The Training Grounds",      difficulty:"Easy" },
+      { id:2, x:350, y:400, unlocked:false, name:"The Dark Forest",            difficulty:"Medium" },
+      { id:3, x:550, y:480, unlocked:false, name:"Ruins of the Old Kingdom",   difficulty:"Hard" },
+      { id:4, x:700, y:320, unlocked:false, name:"Dragon’s Lair",              difficulty:"Very Hard" },
+      { id:5, x:400, y:200, unlocked:false, name:"The Cursed Citadel",         difficulty:"Nightmare" }
+    ];
+
+    let currentArena       = null;
+    let currentEnemyImage  = enemyImageDefault;
+    let lastTime           = 0;
+    let arenaAnimationFrameId = null;
+
+    // ─── Draw the overworld map ───
+    function drawMap() {
+      mapCtx.clearRect(0,0,mapCanvas.width,mapCanvas.height);
+      mapCtx.fillStyle='#2a2a2a'; mapCtx.fillRect(0,0,mapCanvas.width,mapCanvas.height);
+      mapCtx.strokeStyle='#666'; mapCtx.lineWidth=3;
+      mapCtx.beginPath();
+      mapCtx.moveTo(arenas[0].x,arenas[0].y);
+      for(let i=1;i<arenas.length;i++) mapCtx.lineTo(arenas[i].x,arenas[i].y);
+      mapCtx.stroke();
+      arenas.forEach(a=>{
+        mapCtx.beginPath();
+        mapCtx.arc(a.x,a.y,25,0,Math.PI*2);
+        mapCtx.fillStyle = a.unlocked ? '#44cc44' : '#555';
+        mapCtx.fill();
+        mapCtx.strokeStyle = a.unlocked ? '#22aa22' : '#333';
+        mapCtx.lineWidth=3; mapCtx.stroke();
+        mapCtx.fillStyle='#eee';
+        mapCtx.font='bold 18px sans-serif';
+        mapCtx.textAlign='center'; mapCtx.textBaseline='middle';
+        mapCtx.fillText(a.id, a.x, a.y);
+      });
+    }
+
+    function getClickedArena(mx,my) {
+      return arenas.find(a=>{
+        if(!a.unlocked) return false;
+        const dx=mx-a.x, dy=my-a.y;
+        return dx*dx+dy*dy <= 25*25;
+      });
+    }
+
+    // ─── Enter/exit arena ───
+    function enterArena(arena) {
+      currentArena = arena;
+      currentEnemyImage = (arena.id===2)
+        ? enemyImageForest
+        : enemyImageDefault;
+
+      mapCanvas.style.display = 'none';
+      arenaScreen.style.display = 'flex';
+      arenaCanvas.style.display = 'block';
+      arenaInfo.textContent = `Arena: "${arena.name}" — Difficulty: ${arena.difficulty}`;
+      updateStory(`You enter the arena: "${arena.name}". Prepare to fight!`);
+      arenaCanvas.focus();
+      initArena(arena);
+      startArenaLoop();
+    }
+
+    function exitArena() {
+      arenaScreen.style.display = 'none';
+      arenaCanvas.style.display = 'none';
+      mapCanvas.style.display = 'block';
+      updateStory(`You have cleared "${currentArena.name}"! Choose your next arena.`);
+      const nextIdx = arenas.findIndex(a=>a.id===currentArena.id)+1;
+      if(nextIdx<arenas.length) arenas[nextIdx].unlocked = true;
+      currentArena = null;
+      drawMap();
+    }
+
+    function updateStory(txt) {
+      storyText.textContent = txt;
+    }
+
+    mapCanvas.addEventListener('click', e=>{
+      if(currentArena) return;
+      const r=mapCanvas.getBoundingClientRect();
+      const mx = e.clientX-r.left;
+      const my = e.clientY-r.top;
+      const clicked = getClickedArena(mx,my);
+      if(clicked) enterArena(clicked);
+    });
+
+    arenaCompleteBtn.addEventListener('click', exitArena);
+
+    // ─── Game state ───
+    let arenaRunning = false;
+    const player = {
+      x:400,y:300,
+      radius:20,
+      speed:4,
+      vx:0,vy:0,
+      color:'#44ccff',
+      health:100,maxHealth:100,
+      isAlive:true,
+      damageBoost:false
+    };
+    const keys = {};
+function initArena(arena) {
+  // Reset player properties
+  player.x = 400;
+  player.y = 300;
+  player.health = player.maxHealth;
+  player.isAlive = true;
+  player.speed = 4;
+  player.damageBoost = false;
+
+  // Clear enemies, bullets, powerUps, activePowerUps
+  enemies = [];
+  bullets = [];
+  powerUps = [];
+  activePowerUps = [];
+
+  // Reset wave counter
+  currentWave = 0;
+}
+
+    let mousePos = { x:0, y:0 };
+    let mouseDown = false;
+    let enemies = [], bullets = [];
+    let powerUps = [], activePowerUps = [];
+    let currentWave = 0, maxWaves = 5;
+
+    // ─── Enemy with conditional animation ───
+    class Enemy {
+  // note: removed the radius parameter
+  constructor(x, y, speed = 1, image = enemyImageDefault) {
+    this.x     = x;
+    this.y     = y;
+    this.speed = speed;
+    this.image = image;
+    this.isAlive = true;
+    this.health  = 30;
+
+    // ▶︎ PICK SIZE BASED ON IMAGE:
+    if (this.image === enemyImageForest) {
+      // Medusa
+      this.radius = 75;
+      this.frameCount    = 16;
+      this.frameWidth    = 128;
+      this.frameHeight   = 136;
+      this.frameX        = 0;
+      this.fps           = 8;
+      this.frameTimer    = 0;
+      this.frameInterval = 1000 / this.fps;
+    } else {
+      // Troll (or any other default)
+      this.radius     = 100;
+      this.frameCount = 1;
+    }
+  }
+
+  update(deltaTime) {
+    if (!this.isAlive) return;
+    // movement toward player...
+    const dx = player.x - this.x;
+    const dy = player.y - this.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist > 1) {
+      this.x += (dx / dist) * this.speed;
+      this.y += (dy / dist) * this.speed;
+    }
+    // animation advance...
+    if (this.frameCount > 1) {
+      this.frameTimer += deltaTime;
+      if (this.frameTimer >= this.frameInterval) {
+        this.frameTimer -= this.frameInterval;
+        this.frameX = (this.frameX + 1) % this.frameCount;
+      }
+    }
+  }
+
+  draw(ctx) {
+    if (!this.isAlive) return;
+    if (this.frameCount > 1) {
+      // Medusa sprite‐sheet
+      const sx = this.frameX * this.frameWidth;
+      ctx.drawImage(
+        this.image,
+        sx, 0,
+        this.frameWidth, this.frameHeight,
+        this.x - this.radius, this.y - this.radius,
+        this.radius * 2, this.radius * 2
+      );
+    } else {
+      // Troll single frame
+      ctx.drawImage(
+        this.image,
+        this.x - this.radius, this.y - this.radius,
+        this.radius * 2, this.radius * 2
+      );
+    }
+  }
+}
+
+
+    // ─── Bullets ───
+    class Bullet {
+      constructor(x,y,dx,dy){
+        this.x=x; this.y=y; this.dx=dx; this.dy=dy;
+        this.radius=6; this.speed=10; this.color='#ffff66';
+        this.isAlive=true;
+      }
+      update(){
+        if(!this.isAlive) return;
+        this.x += this.dx*this.speed;
+        this.y += this.dy*this.speed;
+        if(this.x<0||this.x>arenaCanvas.width||this.y<0||this.y>arenaCanvas.height){
+          this.isAlive=false;
+        }
+      }
+      draw(ctx){
+        if(!this.isAlive) return;
+        ctx.beginPath();
+        ctx.fillStyle=this.color;
+        ctx.arc(this.x,this.y,this.radius,0,Math.PI*2);
+        ctx.fill();
+      }
+    }
+
+    // ─── Power‑ups ───
+    const powerUpTypes = {
+      health:{
+        color:'#44ff44',
+        apply:p=>{p.health=Math.min(p.health+40,p.maxHealth);updateStory("Health restored!");},
+        duration:0
+      },
+      speed:{
+        color:'#ffaa00',
+        apply:p=>{p.speed+=2;updateStory("Speed boosted!");},
+        revert:p=>{p.speed-=2;},
+        duration:8000
+      },
+      damage:{
+        color:'#ff4444',
+        apply:p=>{p.damageBoost=true;updateStory("Damage boosted!");},
+        revert:p=>{p.damageBoost=false;},
+        duration:8000
+      }
+    };
+    class PowerUp {
+      constructor(x,y,type){
+        this.x=x; this.y=y; this.type=type;
+        this.radius=15; this.spawnTime=Date.now();
+        this.duration=powerUpTypes[type].duration;
+        this.isAlive=true;
+      }
+      update(){
+        if(this.duration>0 && Date.now()-this.spawnTime>10000){
+          this.isAlive=false;
+        }
+      }
+      draw(ctx){
+        if(!this.isAlive) return;
+        ctx.beginPath();
+        ctx.fillStyle=powerUpTypes[this.type].color;
+        ctx.shadowColor=ctx.fillStyle;
+        ctx.shadowBlur=12;
+        ctx.arc(this.x,this.y,this.radius,0,Math.PI*2);
+        ctx.fill();
+        ctx.shadowBlur=0;
+        ctx.fillStyle='#222';
+        ctx.font='bold 18px sans-serif';
+        ctx.textAlign='center';
+        ctx.textBaseline='middle';
+        ctx.fillText(this.type.charAt(0).toUpperCase(), this.x, this.y);
+      }
+    }
+    let lastPowerUpSpawn=0, powerUpSpawnInterval=10000;
+
+    function spawnRandomPowerUp(){
+      const x = Math.random()*(arenaCanvas.width-60)+30;
+      const y = Math.random()*(arenaCanvas.height-60)+30;
+      const types = Object.keys(powerUpTypes);
+      const t = types[Math.floor(Math.random()*types.length)];
+      powerUps.push(new PowerUp(x,y,t));
+    }
+    function handlePowerUpPickups(){
+      powerUps.forEach(pu=>{
+        if(!pu.isAlive) return;
+        const dx=pu.x-player.x, dy=pu.y-player.y;
+        if(Math.hypot(dx,dy) < pu.radius+player.radius){
+          pu.isAlive=false;
+          powerUpTypes[pu.type].apply(player);
+          if(powerUpTypes[pu.type].duration>0){
+            activePowerUps.push({
+              type:pu.type,
+              expireAt:Date.now()+powerUpTypes[pu.type].duration
+            });
+          }
+        }
+      });
+      const now=Date.now();
+      activePowerUps = activePowerUps.filter(ap=>{
+        if(now>ap.expireAt){
+          powerUpTypes[ap.type].revert(player);
+          return false;
+        }
+        return true;
+      });
+    }
+    function updatePowerUps(){
+      if(Date.now()-lastPowerUpSpawn>powerUpSpawnInterval && powerUps.length===0){
+        spawnRandomPowerUp();
+        lastPowerUpSpawn=Date.now();
+      }
+      powerUps.forEach(p=>p.update());
+      powerUps = powerUps.filter(p=>p.isAlive);
+      handlePowerUpPickups();
+    }
+
+    // ─── Spawning & waves ───
+    function spawnWave(num){
+      const count = 3 + num*2;
+      const speed = 1 + num*0.4;
+      enemies = [];
+      for(let i=0;i<count;i++){
+        let x,y,e=Math.floor(Math.random()*4);
+        if(e===0){ x=Math.random()*arenaCanvas.width; y=-30; }
+        if(e===1){ x=arenaCanvas.width+30; y=Math.random()*arenaCanvas.height; }
+        if(e===2){ x=Math.random()*arenaCanvas.width; y=arenaCanvas.height+30; }
+        if(e===3){ x=-30; y=Math.random()*arenaCanvas.height; }
+        // For forest enemies, make radius bigger to scale up the sprite without glitch
+enemies.push(new Enemy(x, y, speed, currentEnemyImage));
+
+
+      }
+    }
+
+    // ─── Main update/draw ───
+    function updateArena(deltaTime){
+      if(!arenaRunning) return;
+      // player movement
+      player.vx=player.vy=0;
+      if(keys['w']||keys['arrowup'])    player.vy=-player.speed;
+      if(keys['s']||keys['arrowdown'])  player.vy= player.speed;
+      if(keys['a']||keys['arrowleft'])  player.vx=-player.speed;
+      if(keys['d']||keys['arrowright']) player.vx= player.speed;
+      player.x = Math.min(Math.max(player.radius, player.x+player.vx), arenaCanvas.width-player.radius);
+      player.y = Math.min(Math.max(player.radius, player.y+player.vy), arenaCanvas.height-player.radius);
+
+      // shooting
+      if(mouseDown && player.isAlive) shootBullet();
+
+      // power‑ups
+      updatePowerUps();
+
+      // bullets
+      bullets.forEach(b=>b.update());
+      bullets = bullets.filter(b=>b.isAlive);
+
+      // enemies
+      enemies.forEach(e=>e.update(deltaTime));
+
+      // bullet↔enemy collision
+      bullets.forEach(b=>{
+        enemies.forEach(e=>{
+          if(e.isAlive && b.isAlive){
+            const dx=e.x-b.x, dy=e.y-b.y;
+            if(Math.hypot(dx,dy) < e.radius+b.radius){
+              const dmg = player.damageBoost ? 30 : 10;
+              e.health -= dmg; b.isAlive=false;
+              if(e.health<=0) e.isAlive=false;
+            }
+          }
+        });
+      });
+      enemies = enemies.filter(e=>e.isAlive);
+
+      // enemy↔player collision
+      enemies.forEach(e=>{
+        if(e.isAlive && player.isAlive){
+          const dx=e.x-player.x, dy=e.y-player.y;
+          if(Math.hypot(dx,dy) < e.radius+player.radius){
+            player.health--;
+            if(player.health<=0){
+              player.isAlive=false;
+              arenaRunning=false;
+              updateStory("You died! Returning to map...");
+              setTimeout(exitArena,3000);
+            }
+          }
+        }
+      });
+
+      // wave progression
+      if(enemies.length===0){
+        currentWave++;
+        if(currentWave>maxWaves){
+          arenaRunning=false;
+          updateStory(`You cleared all waves in "${currentArena.name}"!`);
+          setTimeout(exitArena,2000);
+        } else {
+          spawnWave(currentWave);
+          updateStory(`Wave ${currentWave} begins!`);
+        }
+      }
+    }
+
+    function drawArena(){
+      arenaCtx.clearRect(0,0,arenaCanvas.width,arenaCanvas.height);
+      // player
+      if(player.isAlive){
+        arenaCtx.beginPath();
+        arenaCtx.fillStyle=player.color;
+        arenaCtx.arc(player.x,player.y,player.radius,0,Math.PI*2);
+        arenaCtx.fill();
+      }
+      // enemies, bullets, power‑ups
+      enemies.forEach(e=>e.draw(arenaCtx));
+      bullets.forEach(b=>b.draw(arenaCtx));
+      powerUps.forEach(pu=>pu.draw(arenaCtx));
+      // health bar
+      arenaCtx.fillStyle='#444';
+      arenaCtx.fillRect(10,10,200,24);
+      arenaCtx.fillStyle='#44cc44';
+      arenaCtx.fillRect(10,10,200*(player.health/player.maxHealth),24);
+      arenaCtx.strokeStyle='#222';
+      arenaCtx.strokeRect(10,10,200,24);
+    }
+
+    // ─── Game loop ───
+    function arenaLoop(timeStamp){
+      const deltaTime = timeStamp - lastTime;
+      lastTime = timeStamp;
+      updateArena(deltaTime);
+      drawArena();
+      if(arenaRunning){
+        arenaAnimationFrameId = requestAnimationFrame(arenaLoop);
+      }
+    }
+
+    function startArenaLoop(){
+      if(arenaAnimationFrameId){
+        cancelAnimationFrame(arenaAnimationFrameId);
+        arenaAnimationFrameId = null;
+      }
+      bullets = [];
+      currentWave = 0;
+      spawnWave(1);
+      updateStory(`Wave 1 begins!`);
+      arenaRunning = true;
+      lastTime = 0;
+      requestAnimationFrame(arenaLoop);
+    }
+
+    // ─── Input handlers ───
+    arenaCanvas.addEventListener('keydown', e=>{ keys[e.key.toLowerCase()] = true; });
+    arenaCanvas.addEventListener('keyup',   e=>{ keys[e.key.toLowerCase()] = false; });
+    arenaCanvas.addEventListener('mousemove', e=>{
+      const r = arenaCanvas.getBoundingClientRect();
+      mousePos.x = e.clientX - r.left;
+      mousePos.y = e.clientY - r.top;
+    });
+    arenaCanvas.addEventListener('mousedown', ()=>{ mouseDown = true; });
+    arenaCanvas.addEventListener('mouseup',   ()=>{ mouseDown = false; });
+    arenaCanvas.addEventListener('blur',      ()=>{
+      for(let k in keys) keys[k] = false;
+      mouseDown = false;
+    });
+
+    function shootBullet(){
+      const now = Date.now();
+      if(now - (window.lastShotTime||0) < 200) return;
+      window.lastShotTime = now;
+      const dx = mousePos.x - player.x, dy = mousePos.y - player.y;
+      const dist = Math.hypot(dx,dy);
+      if(!dist) return;
+      bullets.push(new Bullet(
+        player.x + dx/dist*player.radius,
+        player.y + dy/dist*player.radius,
+        dx/dist, dy/dist
+      ));
+    }
+
+    // ─── Initialize ───
+    drawMap();
+  })();
+  </script>
+</body>
+</html>
+

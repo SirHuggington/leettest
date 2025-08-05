@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Dice Chess (Colored Pieces)</title>
+  <style>
+    body {
+      background: #222;
+      color: #fff;
+      font-family: Arial, sans-serif;
+      text-align: center;
+      margin: 0;
+      padding: 20px;
+    }
+
+    h1 {
+      margin-bottom: 10px;
+    }
+
+    #dice {
+      font-size: 40px;
+      margin: 10px;
+    }
+
+    #allowed {
+      font-size: 20px;
+    }
+
+    button {
+      padding: 10px 20px;
+      font-size: 16px;
+      margin: 10px;
+      background: #444;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+
+    table {
+      border-collapse: collapse;
+      margin: 0 auto;
+    }
+
+    td {
+      width: 60px;
+      height: 60px;
+      text-align: center;
+      vertical-align: middle;
+      font-size: 42px;
+      cursor: pointer;
+      user-select: none;
+      transition: background-color 0.2s;
+    }
+
+    .white { background: #f0d9b5; }
+    .black { background: #b58863; }
+
+    .selected { outline: 3px solid yellow; }
+
+    /* Piece colors */
+    .red { color: #ff4d4d; }
+    .blue { color: #4d94ff; }
+  </style>
+</head>
+<body>
+
+  <h1>🎲 Dice Chess</h1>
+  <button onclick="rollDice()">Roll Dice</button>
+  <div id="dice">🎲</div>
+  <div id="allowed">Allowed piece: -</div>
+  <br />
+  <table id="chessboard"></table>
+
+  <script>
+    const boardEl = document.getElementById('chessboard');
+    const diceEl = document.getElementById('dice');
+    const allowedEl = document.getElementById('allowed');
+
+    const initialPosition = [
+      ['r','n','b','q','k','b','n','r'],
+      ['p','p','p','p','p','p','p','p'],
+      ['','','','','','','',''],
+      ['','','','','','','',''],
+      ['','','','','','','',''],
+      ['','','','','','','',''],
+      ['P','P','P','P','P','P','P','P'],
+      ['R','N','B','Q','K','B','N','R'],
+    ];
+
+    let board = JSON.parse(JSON.stringify(initialPosition));
+    let selected = null;
+    let turn = 'w'; // w or b
+    let allowedType = null;
+
+    const pieceNames = {
+      'p': 'Pawn',
+      'n': 'Knight',
+      'b': 'Bishop',
+      'r': 'Rook',
+      'q': 'Queen',
+      'k': 'King'
+    };
+
+    const pieceIcons = {
+      'p': '♟', 'r': '♜', 'n': '♞', 'b': '♝', 'q': '♛', 'k': '♚',
+      'P': '♙', 'R': '♖', 'N': '♘', 'B': '♗', 'Q': '♕', 'K': '♔'
+    };
+
+    function drawBoard() {
+      boardEl.innerHTML = '';
+      for (let y = 0; y < 8; y++) {
+        const row = board[y];
+        const tr = document.createElement('tr');
+        for (let x = 0; x < 8; x++) {
+          const cell = document.createElement('td');
+          const piece = row[x];
+          cell.className = (x + y) % 2 === 0 ? 'white' : 'black';
+          cell.textContent = pieceIcons[piece] || '';
+          cell.dataset.x = x;
+          cell.dataset.y = y;
+
+          if (piece) {
+            if (piece === piece.toUpperCase()) {
+              cell.classList.add('red');   // Player 1 pieces in red
+            } else {
+              cell.classList.add('blue');  // Player 2 pieces in blue
+            }
+          }
+
+          if (selected && selected.x == x && selected.y == y) {
+            cell.classList.add('selected');
+          }
+          cell.onclick = () => handleCellClick(x, y);
+          tr.appendChild(cell);
+        }
+        boardEl.appendChild(tr);
+      }
+    }
+
+    function rollDice() {
+      const roll = Math.floor(Math.random() * 6) + 1;
+      const types = ['p','n','b','r','q','k'];
+      allowedType = types[roll - 1];
+      diceEl.textContent = `🎲 ${roll}`;
+      allowedEl.textContent = `Allowed piece: ${pieceNames[allowedType]}`;
+      selected = null;
+      drawBoard();
+    }
+
+    function handleCellClick(x, y) {
+      const piece = board[y][x];
+      if (selected) {
+        if (tryMove(selected.x, selected.y, x, y)) {
+          selected = null;
+          drawBoard();
+        } else {
+          selected = null;
+          drawBoard();
+        }
+      } else {
+        if (piece && isPlayersPiece(piece) && matchesAllowedType(piece)) {
+          selected = { x, y };
+          drawBoard();
+        }
+      }
+    }
+
+    function isPlayersPiece(piece) {
+      return (turn === 'w' && piece === piece.toUpperCase()) ||
+             (turn === 'b' && piece === piece.toLowerCase());
+    }
+
+    function matchesAllowedType(piece) {
+      return piece.toLowerCase() === allowedType;
+    }
+
+    function tryMove(sx, sy, dx, dy) {
+      const piece = board[sy][sx];
+      const dest = board[dy][dx];
+
+      if (!piece || !matchesAllowedType(piece)) return false;
+      if (dest && isPlayersPiece(dest)) return false;
+
+      const dxAbs = Math.abs(dx - sx);
+      const dyAbs = Math.abs(dy - sy);
+      const dirY = turn === 'w' ? -1 : 1;
+
+      const type = piece.toLowerCase();
+      let valid = false;
+
+      if (type === 'p') {
+        if (dx === sx && dy - sy === dirY && !dest) valid = true;
+        if (dxAbs === 1 && dy - sy === dirY && dest) valid = true;
+      }
+
+      if (type === 'r') valid = (sx === dx || sy === dy);
+      if (type === 'n') valid = (dxAbs === 1 && dyAbs === 2) || (dxAbs === 2 && dyAbs === 1);
+      if (type === 'b') valid = dxAbs === dyAbs;
+      if (type === 'q') valid = dxAbs === dyAbs || sx === dx || sy === dy;
+      if (type === 'k') valid = dxAbs <= 1 && dyAbs <= 1;
+
+      if (valid) {
+        board[dy][dx] = piece;
+        board[sy][sx] = '';
+        turn = turn === 'w' ? 'b' : 'w';
+        allowedType = null;
+        allowedEl.textContent = 'Allowed piece: -';
+        diceEl.textContent = '🎲';
+        return true;
+      }
+      return false;
+    }
+
+    drawBoard();
+  </script>
+</body>
+</html>

@@ -1,0 +1,786 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Game: Creating Any Game (Prototype)</title>
+  <style>
+    body {
+      margin: 0;
+      display: flex;
+      height: 100vh;
+      font-family: sans-serif;
+    }
+    #sidebar {
+      width: 250px;
+      background: #1e1e1e;
+      color: white;
+      padding: 10px;
+      overflow-y: auto;
+    }
+    .module {
+      background: #333;
+      padding: 8px;
+      margin-bottom: 6px;
+      border-radius: 6px;
+      cursor: grab;
+      user-select: none;
+    }
+    #gameArea {
+      flex: 1;
+      position: relative;
+      background: #111;
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+    #resetBtn {
+      float: right;
+      padding: 4px 8px;
+      font-size: 14px;
+      cursor: pointer;
+      background: #555;
+      border: none;
+      border-radius: 4px;
+      color: white;
+      user-select: none;
+    }
+    #resetBtn:hover {
+      background: #777;
+    }
+    #activeModules {
+      margin-top: 10px;
+      max-height: 400px;
+      overflow-y: auto;
+    }
+    .active-module {
+      background: #444;
+      margin-bottom: 6px;
+      border-radius: 6px;
+      user-select: none;
+    }
+    .active-module-header {
+      padding: 8px;
+      cursor: pointer;
+      font-weight: bold;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .active-module-content {
+      background: #555;
+      padding: 8px;
+      display: none;
+      border-radius: 0 0 6px 6px;
+    }
+    .goal-option {
+      background: #666;
+      margin: 4px 0;
+      padding: 6px;
+      border-radius: 4px;
+      cursor: pointer;
+      text-align: center;
+      user-select: none;
+    }
+    .goal-option:hover {
+      background: #888;
+    }
+    #goalStatus {
+      margin-top: 8px;
+      color: #003366;
+      font-weight: bold;
+      text-align: center;
+      user-select: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="sidebar">
+    <h3>
+      Modules
+      <button id="resetBtn">Reset</button>
+    </h3>
+    <div class="module" draggable="true" data-module="movement">🧍 Movement (WASD)</div>
+    <div class="module" draggable="true" data-module="shooting">🔫 Shooting</div>
+    <div class="module" draggable="true" data-module="enemyAI">👾 Enemy AI</div>
+    <div class="module" draggable="true" data-module="health">❤️ Health System</div>
+    <div class="module" draggable="true" data-module="collision">⬛ Collision Detection</div>
+    <div class="module" draggable="true" data-module="goal">🏁 Goal</div>
+    <div class="module" draggable="true" data-module="terrain">🧱 Terrain</div>
+    <h3>Visual Themes</h3>
+    <div class="module" draggable="true" data-theme="fantasy">🧙 Fantasy</div>
+    <div class="module" draggable="true" data-theme="cyberpunk">🌆 Cyberpunk</div>
+    <div class="module" draggable="true" data-theme="n64">🕹️ Nintendo 64</div>
+
+    <div id="activeModules"></div>
+  </div>
+  <div id="gameArea">
+    <canvas id="gameCanvas"></canvas>
+    <div id="goalStatus"></div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+    canvas.width = window.innerWidth - 250;
+    canvas.height = window.innerHeight;
+
+    let modules = {};
+    let currentTheme = "default";
+
+    const startPlayerState = { x: 200, y: 200, size: 30, speed: 2, hp: 3 };
+    let player = { ...startPlayerState };
+
+    let bullets = [];
+    let enemies = [];
+    let items = [];
+    let terrainBlocks = [];
+
+    let goalActive = false;
+    let goalType = null;
+    let goalStatusText = "";
+
+    let goalStartTime = 0;
+    let goalDuration = 15000;
+
+    const totalItemsToCollect = 5;
+    let collectedItems = 0;
+    const destination = { x: canvas.width - 60, y: canvas.height - 60, size: 30 };
+
+    const activeModulesDiv = document.getElementById("activeModules");
+    const goalStatusDiv = document.getElementById("goalStatus");
+    const resetBtn = document.getElementById("resetBtn");
+
+    // ==========================================================
+    // Drag & Drop Modules / Themes
+    // ==========================================================
+    document.querySelectorAll(".module").forEach((el) => {
+      el.addEventListener("dragstart", (e) => {
+        e.dataTransfer.setData("module", e.target.dataset.module || "");
+        e.dataTransfer.setData("theme", e.target.dataset.theme || "");
+      });
+    });
+
+    document.getElementById("gameArea").addEventListener("dragover", (e) => e.preventDefault());
+
+    document.getElementById("gameArea").addEventListener("drop", (e) => {
+      const mod = e.dataTransfer.getData("module");
+      const theme = e.dataTransfer.getData("theme");
+
+      if (mod) {
+        if (!modules[mod]) {
+          modules[mod] = true;
+          alert(`✅ ${mod} module added!`);
+          addActiveModuleUI(mod);
+          if (mod === "goal") {
+            goalActive = false;
+            goalType = null;
+            goalStatusText = "";
+            updateGoalStatus();
+          } else if (mod === "terrain") {
+            generateTerrainBlocks();
+          }
+        }
+      }
+
+      if (theme) {
+        currentTheme = theme;
+        alert(`🎨 Theme set to ${theme}`);
+      }
+    });
+
+    // ==========================================================
+    // Input
+    // ==========================================================
+    const keys = {};
+    window.addEventListener("keydown", (e) => (keys[e.key.toLowerCase()] = true));
+    window.addEventListener("keyup", (e) => (keys[e.key.toLowerCase()] = false));
+
+    // Simple mouse shooting: fire to the right
+    canvas.addEventListener("click", () => {
+      if (modules.shooting) {
+        bullets.push({ x: player.x + player.size, y: player.y + player.size / 2 - 2, dx: 4, dy: 0 });
+      }
+    });
+
+    // ==========================================================
+    // Reset
+    // ==========================================================
+    resetBtn.addEventListener("click", () => {
+      modules = {};
+      player = { ...startPlayerState };
+      bullets = [];
+      enemies = [];
+      items = [];
+      terrainBlocks = [];
+      goalActive = false;
+      goalType = null;
+      goalStatusText = "";
+      currentTheme = "default";
+      activeModulesDiv.innerHTML = "";
+      updateGoalStatus();
+      alert("🔄 Game reset! All modules cleared, player and state reset.");
+    });
+
+    // ==========================================================
+    // Active Modules UI
+    // ==========================================================
+    function addActiveModuleUI(mod) {
+  if (document.getElementById("active-" + mod)) return;
+
+  const container = document.createElement("div");
+  container.className = "active-module";
+  container.id = "active-" + mod;
+
+  const header = document.createElement("div");
+  header.className = "active-module-header";
+  header.textContent =
+    mod === "goal" ? "🏁 Goal" :
+    mod === "terrain" ? "🧱 Terrain" :
+    mod === "enemyAI" ? "👾 Enemy AI" :
+    mod === "shooting" ? "🔫 Shooting" :
+    mod === "movement" ? "🧍 Movement" :
+    mod === "collision" ? "⬛ Collision" :
+    mod === "health" ? "❤️ Health" :
+    mod;
+
+  const toggleBtn = document.createElement("span");
+  toggleBtn.textContent = "+";
+  toggleBtn.style.cursor = "pointer";
+  header.appendChild(toggleBtn);
+  container.appendChild(header);
+
+  const content = document.createElement("div");
+  content.className = "active-module-content";
+
+  // Add specific controls for certain modules
+if (mod === "health") {
+  const hpLabel = document.createElement("label");
+  hpLabel.textContent = "Player HP:";
+  hpLabel.style.display = "block";
+  hpLabel.style.marginTop = "6px";
+  hpLabel.style.color = "white";
+
+  const hpInput = document.createElement("input");
+  hpInput.type = "number";
+  hpInput.min = 1;
+  hpInput.value = player.hp;
+  hpInput.style.width = "100%";
+  hpInput.style.padding = "4px";
+  hpInput.style.marginTop = "4px";
+  hpInput.style.borderRadius = "4px";
+  hpInput.style.border = "none";
+
+  hpInput.addEventListener("input", () => {
+    player.hp = parseInt(hpInput.value);
+  });
+
+  content.appendChild(hpLabel);
+  content.appendChild(hpInput);
+}
+
+
+
+  if (mod === "terrain") {
+    const regenBtn = document.createElement("button");
+    regenBtn.textContent = "🔁 Generate New Terrain";
+    regenBtn.style.display = "block";
+    regenBtn.style.marginTop = "6px";
+    regenBtn.style.width = "100%";
+    regenBtn.style.padding = "6px";
+    regenBtn.style.background = "#666";
+    regenBtn.style.border = "none";
+    regenBtn.style.color = "white";
+    regenBtn.style.cursor = "pointer";
+    regenBtn.style.borderRadius = "4px";
+    regenBtn.addEventListener("click", () => {
+      generateTerrainBlocks();
+    });
+    content.appendChild(regenBtn);
+  }
+
+  if (mod === "goal") {
+    const goals = [
+      { id: "defeatAll", label: "Defeat All Enemies" },
+      { id: "surviveTime", label: "Survive for Time Limit" },
+      { id: "collectItems", label: "Collect Items" },
+      { id: "reachDestination", label: "Reach Destination" },
+    ];
+
+    goals.forEach((goal) => {
+      const option = document.createElement("div");
+      option.className = "goal-option";
+      option.textContent = goal.label;
+      option.dataset.goalId = goal.id;
+      content.appendChild(option);
+
+      option.addEventListener("click", () => {
+        selectGoal(goal.id);
+      });
+    });
+  }
+
+  header.addEventListener("click", () => {
+    const isOpen = content.style.display === "block";
+    content.style.display = isOpen ? "none" : "block";
+    toggleBtn.textContent = isOpen ? "+" : "−";
+  });
+
+  container.appendChild(content);
+  activeModulesDiv.appendChild(container);
+}
+
+
+    // ==========================================================
+    // Terrain
+    // ==========================================================
+    function generateTerrainBlocks() {
+      terrainBlocks = [];
+      for (let i = 0; i < 8; i++) {
+        terrainBlocks.push({
+  x: Math.random() * (canvas.width - 80),
+  y: Math.random() * (canvas.height - 80),
+  width: 60 + Math.random() * 40,
+  height: 40 + Math.random() * 30,
+  hp: 5, // destructible: 5 hits
+});
+
+      }
+    }
+
+    // ==========================================================
+    // Utilities
+    // ==========================================================
+    function rectsOverlap(a, b, aw, ah) {
+      return (
+        a.x < b.x + b.width &&
+        a.x + aw > b.x &&
+        a.y < b.y + b.height &&
+        a.y + ah > b.y
+      );
+    }
+
+    function clamp(value, min, max) {
+      return Math.min(Math.max(value, min), max);
+    }
+
+    // ==========================================================
+    // Goals
+    // ==========================================================
+    function selectGoal(id) {
+      goalType = id;
+      goalActive = true;
+      goalStatusText = "";
+      bullets = [];
+      enemies = [];
+      items = [];
+      collectedItems = 0;
+      goalStartTime = performance.now();
+
+      switch (goalType) {
+        case "defeatAll":
+          spawnEnemies(5);
+          goalStatusText = "Goal: Defeat all enemies!";
+          break;
+        case "surviveTime":
+          goalDuration = 15000;
+          goalStatusText = "Goal: Survive for 15 seconds!";
+          break;
+        case "collectItems":
+          spawnItems(totalItemsToCollect);
+          goalStatusText = `Goal: Collect ${totalItemsToCollect} items!`;
+          break;
+        case "reachDestination":
+          goalStatusText = "Goal: Reach the destination (bottom-right)!";
+          break;
+      }
+      updateGoalStatus();
+    }
+
+    function spawnEnemies(count) {
+      enemies = [];
+      for (let i = 0; i < count; i++) {
+        enemies.push({
+          x: canvas.width - 50,
+          y: Math.random() * (canvas.height - 20),
+          size: 20,
+          hp: 1,
+          path: null,
+          pathTimer: 0,
+        });
+      }
+    }
+
+    function spawnItems(count) {
+      items = [];
+      for (let i = 0; i < count; i++) {
+        items.push({
+          x: Math.random() * (canvas.width - 20),
+          y: Math.random() * (canvas.height - 20),
+          size: 15,
+        });
+      }
+    }
+
+    function updateGoalStatus() {
+      goalStatusDiv.textContent = goalStatusText;
+    }
+
+    function checkGoalCompletion() {
+      if (!goalActive) return;
+
+      switch (goalType) {
+        case "defeatAll":
+          if (enemies.length === 0) {
+            goalStatusText = "🎉 All enemies defeated! You win!";
+            goalActive = false;
+          }
+          break;
+        case "surviveTime":
+          const elapsed = performance.now() - goalStartTime;
+          if (elapsed >= goalDuration) {
+            goalStatusText = "⏱️ Time's up! You survived! You win!";
+            goalActive = false;
+          } else {
+            goalStatusText = `Goal: Survive for ${((goalDuration - elapsed) / 1000) | 0}s`;
+          }
+          break;
+        case "collectItems":
+          if (collectedItems >= totalItemsToCollect) {
+            goalStatusText = "🎉 All items collected! You win!";
+            goalActive = false;
+          } else {
+            goalStatusText = `Goal: Collect ${totalItemsToCollect} items (${collectedItems} collected)`;
+          }
+          break;
+        case "reachDestination":
+          const px = player.x + player.size / 2;
+          const py = player.y + player.size / 2;
+          if (
+            px > destination.x &&
+            px < destination.x + destination.size &&
+            py > destination.y &&
+            py < destination.y + destination.size
+          ) {
+            goalStatusText = "🎉 Destination reached! You win!";
+            goalActive = false;
+          }
+          break;
+      }
+      updateGoalStatus();
+    }
+
+    // ==========================================================
+    // A* Pathfinding System (Enemy AI Upgrade)
+    // ==========================================================
+    const gridSize = 32; // pixels per grid cell
+    let enemyPathDebug = false; // set true to draw enemy paths
+
+    function positionToGrid(pos) {
+      const cx = pos.x + (pos.size ? pos.size / 2 : 0);
+      const cy = pos.y + (pos.size ? pos.size / 2 : 0);
+      return {
+        x: Math.floor(cx / gridSize),
+        y: Math.floor(cy / gridSize),
+      };
+    }
+
+    function gridToPosition(gridPos) {
+      return {
+        x: gridPos.x * gridSize + gridSize / 2,
+        y: gridPos.y * gridSize + gridSize / 2,
+      };
+    }
+
+    function generateGrid() {
+      const rows = Math.ceil(canvas.height / gridSize);
+      const cols = Math.ceil(canvas.width / gridSize);
+      const grid = Array.from({ length: rows }, () => Array(cols).fill(0));
+
+      terrainBlocks.forEach(block => {
+        const startX = Math.floor(block.x / gridSize);
+        const endX = Math.floor((block.x + block.width) / gridSize);
+        const startY = Math.floor(block.y / gridSize);
+        const endY = Math.floor((block.y + block.height) / gridSize);
+
+        for (let y = startY; y <= endY; y++) {
+          for (let x = startX; x <= endX; x++) {
+            if (y >= 0 && y < rows && x >= 0 && x < cols) {
+              grid[y][x] = 1;
+            }
+          }
+        }
+      });
+
+      return grid;
+    }
+
+    function findPath(start, end, grid) {
+      const openSet = [];
+      const closedSet = new Set();
+      const cameFrom = {};
+      const gScore = {};
+      const fScore = {};
+
+      function hash(pos) {
+        return `${pos.x},${pos.y}`;
+      }
+
+      function heuristic(a, b) {
+        return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
+      }
+
+      openSet.push(start);
+      gScore[hash(start)] = 0;
+      fScore[hash(start)] = heuristic(start, end);
+
+      while (openSet.length) {
+        openSet.sort((a, b) => fScore[hash(a)] - fScore[hash(b)]);
+        const current = openSet.shift();
+        const currentHash = hash(current);
+
+        if (current.x === end.x && current.y === end.y) {
+          const path = [];
+          let curr = current;
+          while (cameFrom[hash(curr)]) {
+            path.unshift(curr);
+            curr = cameFrom[hash(curr)];
+          }
+          return path;
+        }
+
+        closedSet.add(currentHash);
+
+        const neighbors = [
+          { x: current.x + 1, y: current.y },
+          { x: current.x - 1, y: current.y },
+          { x: current.x, y: current.y + 1 },
+          { x: current.x, y: current.y - 1 },
+        ];
+
+        for (const neighbor of neighbors) {
+          const neighborHash = hash(neighbor);
+          if (
+            neighbor.x < 0 ||
+            neighbor.y < 0 ||
+            neighbor.x >= grid[0].length ||
+            neighbor.y >= grid.length ||
+            grid[neighbor.y][neighbor.x] === 1 ||
+            closedSet.has(neighborHash)
+          ) continue;
+
+          const tentativeG = gScore[currentHash] + 1;
+
+          if (!(neighborHash in gScore) || tentativeG < gScore[neighborHash]) {
+            cameFrom[neighborHash] = current;
+            gScore[neighborHash] = tentativeG;
+            fScore[neighborHash] = tentativeG + heuristic(neighbor, end);
+            if (!openSet.some(p => p.x === neighbor.x && p.y === neighbor.y)) {
+              openSet.push(neighbor);
+            }
+          }
+        }
+      }
+
+      return [];
+    }
+
+    // ==========================================================
+    // Game Loop
+    // ==========================================================
+    function gameLoop() {
+      // background by theme
+      switch (currentTheme) {
+        case "fantasy": ctx.fillStyle = "#3b2f2f"; break;
+        case "cyberpunk": ctx.fillStyle = "#0f0f1a"; break;
+        case "n64": ctx.fillStyle = "#5588cc"; break;
+        default: ctx.fillStyle = "#111";
+      }
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // terrain
+      if (modules.terrain) {
+        ctx.fillStyle = "#444";
+        terrainBlocks.forEach(block => {
+          ctx.fillRect(block.x, block.y, block.width, block.height);
+        });
+      }
+
+      // player movement (WASD)
+      if (modules.movement) {
+        const proposed = { x: player.x, y: player.y };
+        if (keys["w"]) proposed.y -= player.speed;
+        if (keys["s"]) proposed.y += player.speed;
+        if (keys["a"]) proposed.x -= player.speed;
+        if (keys["d"]) proposed.x += player.speed;
+
+        const hit = terrainBlocks.some(block => rectsOverlap(proposed, block, player.size, player.size));
+        if (!hit) {
+          player.x = proposed.x;
+          player.y = proposed.y;
+        }
+      }
+
+      // collision world bounds
+      if (modules.collision) {
+        player.x = clamp(player.x, 0, canvas.width - player.size);
+        player.y = clamp(player.y, 0, canvas.height - player.size);
+      }
+
+      // draw player
+      ctx.fillStyle =
+        currentTheme === "cyberpunk" ? "#0ff" :
+        currentTheme === "fantasy" ? "#9f6" :
+        "lime";
+      ctx.fillRect(player.x, player.y, player.size, player.size);
+
+      // bullets
+      if (modules.shooting) {
+        ctx.fillStyle = currentTheme === "cyberpunk" ? "#f0f" : "yellow";
+        bullets.forEach((b, i) => {
+          // move
+          b.x += b.dx;
+
+          // ** NEW: bullet-terrain collision **
+          if (modules.collision && modules.terrain) {
+  for (let j = 0; j < terrainBlocks.length; j++) {
+    const block = terrainBlocks[j];
+    if (rectsOverlap(b, block, 10, 4)) {
+      block.hp--;
+      bullets.splice(i, 1);
+      if (block.hp <= 0) {
+        terrainBlocks.splice(j, 1);
+      }
+      return;
+    }
+  }
+}
+
+
+          // draw
+          ctx.fillRect(b.x, b.y + 10, 10, 4);
+
+          // bullet-enemy
+          if (modules.health) {
+            enemies.forEach((e, ei) => {
+              if (b.x < e.x + e.size && b.x + 10 > e.x && b.y + 10 < e.y + e.size && b.y + 14 > e.y) {
+                e.hp--;
+                bullets.splice(i, 1);
+                if (e.hp <= 0) enemies.splice(ei, 1);
+              }
+            });
+          }
+
+          // out of bounds
+          if (b.x > canvas.width) bullets.splice(i, 1);
+        });
+      }
+
+      // auto-spawn roaming enemies when enemyAI module is active
+      if (modules.enemyAI && enemies.length < 3) {
+        enemies.push({
+          x: canvas.width,
+          y: Math.random() * (canvas.height - 20),
+          size: 20,
+          hp: 1,
+          path: null,
+          pathTimer: 0,
+        });
+      }
+
+      // draw & update enemies
+      enemies.forEach((e, i) => {
+        if (modules.enemyAI) {
+          if (e.pathTimer <= 0) {
+            const grid = generateGrid();
+            const start = positionToGrid(e);
+            const end = positionToGrid(player);
+            e.path = findPath(start, end, grid);
+            e.pathTimer = 20;
+          } else {
+            e.pathTimer--;
+          }
+
+          if (e.path && e.path.length > 0) {
+            const next = gridToPosition(e.path[0]);
+            const dx = next.x - (e.x + e.size / 2);
+            const dy = next.y - (e.y + e.size / 2);
+            const dist = Math.hypot(dx, dy);
+            const speed = 1.0;
+            if (dist > 1) {
+              const nx = e.x + (dx / dist) * speed;
+              const ny = e.y + (dy / dist) * speed;
+              const test = { x: nx, y: ny };
+              const blocked = terrainBlocks.some(block => rectsOverlap(test, block, e.size, e.size));
+              if (!blocked) {
+                e.x = nx;
+                e.y = ny;
+              } else {
+                e.pathTimer = 0;
+              }
+            } else {
+              e.path.shift();
+            }
+          }
+        }
+
+        ctx.fillStyle = currentTheme === "fantasy" ? "#b44" : "red";
+        ctx.fillRect(e.x, e.y, e.size, e.size);
+
+        if (enemyPathDebug && e.path && e.path.length > 0) {
+          ctx.strokeStyle = "white";
+          ctx.beginPath();
+          ctx.moveTo(e.x + e.size / 2, e.y + e.size / 2);
+          e.path.forEach((node) => {
+            const p = gridToPosition(node);
+            ctx.lineTo(p.x, p.y);
+          });
+          ctx.stroke();
+        }
+
+        if (modules.health &&
+            e.x < player.x + player.size && e.x + e.size > player.x &&
+            e.y < player.y + player.size && e.y + e.size > player.y) {
+          player.hp--;
+          enemies.splice(i, 1);
+        }
+      });
+
+      // goal: collect items
+      if (goalActive && goalType === "collectItems") {
+        ctx.fillStyle = "gold";
+        items.forEach((item, i) => {
+          ctx.beginPath();
+          ctx.arc(item.x + item.size / 2, item.y + item.size / 2, item.size / 2, 0, Math.PI * 2);
+          ctx.fill();
+          if (player.x < item.x + item.size && player.x + player.size > item.x &&
+              player.y < item.y + item.size && player.y + player.size > item.y) {
+            collectedItems++;
+            items.splice(i, 1);
+          }
+        });
+      }
+
+      // goal: reach destination
+      if (goalActive && goalType === "reachDestination") {
+        ctx.fillStyle = "cyan";
+        ctx.fillRect(destination.x, destination.y, destination.size, destination.size);
+      }
+
+      // player HP display
+      if (modules.health) {
+        ctx.fillStyle = "white";
+        ctx.font = "16px sans-serif";
+        ctx.fillText(`HP: ${player.hp}`, 10, 20);
+      }
+
+      checkGoalCompletion();
+      requestAnimationFrame(gameLoop);
+    }
+
+    gameLoop();
+  </script>
+</body>
+</html>

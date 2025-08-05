@@ -1,0 +1,819 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Gorgon Boss Showcase</title>
+  <style>
+    canvas {
+      background: #222;
+      display: block;
+      margin: 0 auto;
+    }
+  </style>
+</head>
+<body>
+<!-- START SCREEN -->
+<div id="startScreen"
+     style="
+       position: absolute;
+       width: 640px;
+       height: 480px;
+       left: 50%;
+       top: 50%;
+       transform: translate(-50%, -50%);
+       background: url('start.jpg') center/cover no-repeat;
+       display: flex;
+       align-items: center;
+       justify-content: center;
+     ">
+  <span style="
+          font-size: 64px;
+          color: gold;
+          font-weight: bold;
+          text-shadow: 2px 2px 4px rgba(0,0,0,0.7);
+        ">
+    Get Ready!
+  </span>
+</div>
+
+<canvas id="game" width="640" height="480" style="display: none;"></canvas>
+
+<img id="kossaImage" src="kossa.png" alt="Kossa" 
+     style="display:none; position:absolute; left:50%; top:50%; transform:translate(-50%, -50%); width:640px; height:480px;">
+
+
+<img id="gameOverImage" src="gameover.jpg" alt="Game Over" 
+     style="display:none; position:absolute; left:50%; top:40%; transform:translate(-50%, -50%); width:300px;">
+<img id="victoryImage" src="win.jpg" alt="Victory" 
+     style="display:none; position:absolute; left:50%; top:40%; transform:translate(-50%, -50%); width:300px;">
+
+
+<button id="restartBtn" style="display:none; position:absolute; left:50%; top:60%; transform:translate(-50%, -50%); font-size: 24px; padding: 10px 20px; cursor:pointer;">
+  Restart
+</button>
+
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+const gameOverImage = document.getElementById("gameOverImage");
+const restartBtn = document.getElementById("restartBtn");
+
+let victoryTimer = 0;
+let victoryTimerStarted = false;
+
+let gameOver = false;
+let gameOverTimer = 0;
+let victory = false;
+
+// Load player animations
+const playerSprites = {
+  idle: { image: new Image(), frames: 4 },
+  walk: { image: new Image(), frames: 8 },
+  attack: { image: new Image(), frames: 5 },
+  dead: { image: new Image(), frames: 6 },
+  defend: { image: new Image(), frames: 5 },
+  hurt: { image: new Image(), frames: 2 },
+};
+
+for (const [key, sprite] of Object.entries(playerSprites)) {
+  sprite.image.src = `player/${key}.png`;
+}
+
+
+const gorgonSprites = {
+  attack: new Image(),
+  dead: new Image(),
+  hurt: new Image(),
+  run: new Image()
+};
+
+const minoSprites = {
+  attack: new Image(),
+  dead: new Image(),
+  hurt: new Image(),
+  run: new Image()
+};
+
+minoSprites.attack.src = "mino/attack.png";
+minoSprites.dead.src = "mino/dead.png";
+minoSprites.hurt.src = "mino/hurt.png";
+minoSprites.run.src = "mino/run.png";
+
+
+const backgroundImage = new Image();
+backgroundImage.src = "background.png";  // Or any valid image path
+
+const shieldSound = new Audio("shield.mp3");
+const damageSound = new Audio("damage.mp3");
+const deathSound = new Audio("death.mp3");
+const stageMusic = new Audio("stage.mp3");
+const attackSound = new Audio("attack.mp3");
+const playerAttackSound = new Audio("sword.mp3");
+
+
+stageMusic.loop = true;
+stageMusic.volume = 1;
+
+gorgonSprites.attack.src = "attack.png";
+gorgonSprites.dead.src = "dead.png";
+gorgonSprites.hurt.src = "hurt.png";
+gorgonSprites.run.src = "run.png";
+
+class Particle {
+  constructor(x, y, color = "lime") {
+    this.x = x;
+    this.y = y;
+    this.vx = (Math.random() - 0.5) * 200;
+    this.vy = (Math.random() - 0.5) * 200;
+    this.alpha = 1;
+    this.size = 4 + Math.random() * 2;
+    this.color = color;
+    this.life = 500; // in milliseconds
+  }
+
+  update(dt) {
+    this.x += this.vx * dt / 1000;
+    this.y += this.vy * dt / 1000;
+    this.life -= dt;
+    this.alpha = Math.max(0, this.life / 500);
+  }
+
+  draw(ctx) {
+    if (this.alpha <= 0) return;
+    ctx.globalAlpha = this.alpha;
+    ctx.fillStyle = this.color;
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+
+  isDead() {
+    return this.life <= 0;
+  }
+}
+
+class Player {
+  constructor(x, y) {
+    this.x = x;
+    this.y = y;
+    this.size = 128;
+    this.health = 100;
+    this.speed = 150;
+this.attackCooldown = 0;
+this.attackDelay = 1000; // milliseconds
+
+    this.state = "idle";
+    this.frameIndex = 0;
+    this.frameTimer = 0;
+    this.frameInterval = 100;
+    this.facingLeft = false;
+  }
+
+  update(dt, keys) {
+    if (this.health <= 0) {
+      this.state = "dead";
+      return;
+    }
+
+if (this.attackCooldown > 0) {
+  this.attackCooldown -= dt;
+}
+
+// Check for attack key press and cooldown
+if ((keys["space"] || keys["j"]) && this.attackCooldown <= 0 && this.state !== "attack" && this.state !== "hurt" && this.state !== "dead") {
+  this.state = "attack";
+  this.frameIndex = 0;
+  this.frameTimer = 0;
+  this.attackCooldown = this.attackDelay;
+}
+
+
+
+    let moving = false;
+    if (keys["a"]) {
+      this.x -= this.speed * dt / 1000;
+      this.facingLeft = true;
+      moving = true;
+    }
+    if (keys["d"]) {
+      this.x += this.speed * dt / 1000;
+      this.facingLeft = false;
+      moving = true;
+    }
+    if (keys["w"]) this.y -= this.speed * dt / 1000;
+    if (keys["s"]) this.y += this.speed * dt / 1000;
+
+    this.x = Math.max(0, Math.min(canvas.width - this.size, this.x));
+    this.y = Math.max(0, Math.min(canvas.height - this.size, this.y));
+
+    // Don't override attack or hurt animation until it's finished
+if (this.state === "attack" || this.state === "hurt" || this.state === "defend") {
+  const sprite = playerSprites[this.state];
+  this.frameTimer += dt;
+  if (this.frameTimer >= this.frameInterval) {
+    this.frameTimer = 0;
+    this.frameIndex++;
+    if (this.frameIndex >= sprite.frames) {
+      // After these animations finish, return to idle or walk
+      this.state = moving ? "walk" : "idle";
+      this.frameIndex = 0;
+    }
+  }
+  return;
+}
+
+
+
+    const sprite = playerSprites[this.state];
+    this.frameTimer += dt;
+    if (this.frameTimer >= this.frameInterval) {
+      this.frameTimer = 0;
+      this.frameIndex = (this.frameIndex + 1) % sprite.frames;
+    }
+  }
+
+  draw(ctx) {
+    const sprite = playerSprites[this.state];
+    const img = sprite.image;
+    const sx = this.frameIndex * this.size;
+
+    ctx.save();
+    if (this.facingLeft) {
+      ctx.translate(this.x + this.size, this.y);
+      ctx.scale(-1, 1);
+      ctx.drawImage(img, sx, 0, this.size, this.size, 0, 0, this.size, this.size);
+    } else {
+      ctx.drawImage(img, sx, 0, this.size, this.size, this.x, this.y, this.size, this.size);
+    }
+    ctx.restore();
+  }
+
+  takeDamage(amount) {
+  const isDefending = this.state === "defend"; // capture BEFORE changing state
+
+  if (isDefending) {
+  amount = 0;
+  this.flashTimer = 100;
+
+  shieldSound.currentTime = 0;
+  shieldSound.play();
+}
+
+
+  this.health -= amount;
+
+  this.state = "hurt";  // state changes AFTER checking for defense
+  this.frameIndex = 0;
+  this.frameTimer = 0;
+
+  const particleColor = isDefending ? "blue" : "red";
+
+  for (let i = 0; i < 15; i++) {
+    particles.push(new Particle(this.x + this.size / 2, this.y + this.size / 2, particleColor));
+  }
+
+  console.log(`Player hurt! Health: ${this.health}`);
+  if (this.health <= 0 && !gameOver) {
+    this.health = 0;
+    gameOver = true;
+    victory = false;
+    gameOverTimer = 0;
+    console.log("Game Over!");
+  }
+}
+
+
+
+
+}
+
+
+class Bullet {
+  constructor(x, y, vx, vy) {
+    this.x = x;
+    this.y = y;
+    this.startX = x;  // remember where it started
+    this.startY = y;
+    this.radius = 5;
+    this.vx = vx;
+    this.vy = vy;
+    this.active = true;
+    this.travelledDistance = 0;  // distance traveled so far
+    this.maxDistance = Math.min(canvas.width, canvas.height) / 9; // 1/9 of smaller canvas side (1/3 of previous)
+
+  }
+
+  update(dt) {
+    const dx = this.vx * dt / 1000;
+    const dy = this.vy * dt / 1000;
+
+    this.x += dx;
+    this.y += dy;
+
+    // Update how far bullet traveled this frame
+    this.travelledDistance += Math.sqrt(dx * dx + dy * dy);
+
+    // Disable bullet if traveled more than maxDistance or out of canvas
+    if (
+      this.travelledDistance > this.maxDistance ||
+      this.x < 0 || this.x > canvas.width ||
+      this.y < 0 || this.y > canvas.height
+    ) {
+      this.active = false;
+    }
+  }
+
+  draw(ctx) {
+    // Only draw bullet if boss HP is 400 or less
+    if (gorgon.health > 0) return;  // Skip drawing when boss HP > 400
+
+    ctx.fillStyle = "yellow";
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+
+class HealthDrop {
+  constructor(x, y) {
+    this.x = x;
+    this.y = y;
+    this.size = 24;
+    this.active = true;
+  }
+
+  draw(ctx) {
+    if (!this.active) return;
+    ctx.fillStyle = "lime";
+    ctx.beginPath();
+    ctx.arc(this.x + this.size / 2, this.y + this.size / 2, this.size / 2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "white";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(this.x + this.size * 0.3, this.y + this.size / 2);
+    ctx.lineTo(this.x + this.size * 0.7, this.y + this.size / 2);
+    ctx.moveTo(this.x + this.size / 2, this.y + this.size * 0.3);
+    ctx.lineTo(this.x + this.size / 2, this.y + this.size * 0.7);
+    ctx.stroke();
+  }
+}
+
+class GorgonBoss {
+  constructor(x, y, frameWidth, frameHeight) {
+    this.x = x;
+    this.y = y;
+    this.frameWidth = frameWidth;
+    this.frameHeight = frameHeight;
+    this.health = 500;
+    this.state = "run";
+    this.speed = 100;
+    this.alive = true;
+this.hurtTimer = 0;
+
+    this.animations = {
+      attack: { image: gorgonSprites.attack, frames: 7 },
+      dead: { image: gorgonSprites.dead, frames: 3 },
+      hurt: { image: gorgonSprites.hurt, frames: 3 },
+      run: { image: gorgonSprites.run, frames: 7 },
+    };
+
+    this.frameIndex = 0;
+    this.frameTimer = 0;
+    this.frameInterval = 100;
+    this.attackCooldown = 0;
+  }
+
+  update(dt) {
+  if (!this.alive) return;
+
+  // 💥 If Gorgon is hurt, count down the hurt timer
+  if (this.state === "hurt") {
+    this.hurtTimer -= dt; // subtract elapsed time
+
+    if (this.hurtTimer <= 0) {
+      this.run(); // return to "run" state after 3 seconds
+    }
+  }
+
+  // 🔁 Reduce attack cooldown timer (so she can attack again after it's ready)
+  this.attackCooldown -= dt;
+
+  // 🎞️ Animation frame handling
+  this.frameTimer += dt;
+  if (this.frameTimer >= this.frameInterval) {
+    this.frameTimer = 0;
+    this.frameIndex++;
+
+    const framesCount = this.animations[this.state].frames;
+    if (this.frameIndex >= framesCount) {
+      if (this.state === "dead") {
+        this.frameIndex = framesCount - 1;
+        this.alive = false;
+      } else if (this.state === "hurt" || this.state === "attack") {
+        this.run(); // don't remove this
+      } else {
+        this.frameIndex = 0;
+      }
+    }
+  }
+}
+
+
+  draw(ctx, playerX) {
+    if (!this.alive) return;
+
+    const anim = this.animations[this.state];
+
+    ctx.save();
+
+    if (playerX < this.x) {
+      ctx.translate(this.x + this.frameWidth, this.y);
+      ctx.scale(-1, 1);
+      ctx.drawImage(
+        anim.image,
+        this.frameIndex * this.frameWidth,
+        0,
+        this.frameWidth,
+        this.frameHeight,
+        0,
+        0,
+        this.frameWidth,
+        this.frameHeight
+      );
+    } else {
+      ctx.drawImage(
+        anim.image,
+        this.frameIndex * this.frameWidth,
+        0,
+        this.frameWidth,
+        this.frameHeight,
+        this.x,
+        this.y,
+        this.frameWidth,
+        this.frameHeight
+      );
+    }
+
+    ctx.restore();
+  }
+
+  takeDamage(amount) {
+  if (this.state === "dead") return;
+  this.health -= amount;
+  this.state = "hurt";
+  this.frameIndex = 0;
+  this.attackCooldown = 0;
+  this.hurtTimer = 3000; // <- Add this line (3 seconds)
+
+  for (let i = 0; i < 15; i++) {
+    particles.push(new Particle(this.x + this.frameWidth / 2, this.y + this.frameHeight / 2));
+  }
+
+  damageSound.currentTime = 0;
+  damageSound.play();
+
+  if (this.health <= 0) {
+    this.die();
+  }
+}
+
+
+  die() {
+  this.state = "dead";
+  this.frameIndex = 0;
+  this.attackCooldown = 0;
+  deathSound.currentTime = 0;
+  deathSound.play();
+  // Removed this.alive = false here to allow death animation to play fully
+  victory = true;
+  gameOver = false;
+  victoryTimer = 0;          // reset timer when boss dies
+  victoryTimerStarted = false;
+}
+
+
+
+
+  attack() {
+    if (this.state !== "dead") {
+      this.state = "attack";
+      this.frameIndex = 0;
+      attackSound.currentTime = 0;
+      attackSound.play();
+    }
+  }
+
+  run() {
+    if (this.state !== "dead" && this.state !== "run") {
+      this.state = "run";
+      this.frameIndex = 0;
+    }
+  }
+
+  attemptAttack(player, dt) {
+  if (this.state === "dead" || this.attackCooldown > 0 || this.state === "hurt") return;
+
+
+    const dx = player.x - this.x;
+    const dy = player.y - this.y;
+    const distance = Math.hypot(dx, dy);
+    const attackRange = 80;
+
+    if (distance < attackRange) {
+      this.attack();
+      player.takeDamage(10);
+      this.attackCooldown = 2000;
+    } else {
+      this.run();
+      const nx = dx / distance;
+      const ny = dy / distance;
+      const moveAmount = this.speed * (dt / 1000);
+
+      this.x += nx * moveAmount;
+      this.y += ny * moveAmount;
+    }
+  }
+}
+
+const keys = {};
+window.addEventListener("keydown", (e) => {
+  const key = e.key.toLowerCase();
+  keys[key] = true;
+
+  if (key === "j") player.state = "attack";
+  if (key === "k" || key === " ") player.state = "defend"; // add spacebar here
+});
+
+
+window.addEventListener("keyup", (e) => {
+  keys[e.key.toLowerCase()] = false;
+});
+
+window.addEventListener("keyup", (e) => {
+  keys[e.key.toLowerCase()] = false;
+});
+
+const mouse = { x: 0, y: 0 };
+canvas.addEventListener("mousemove", (e) => {
+  const rect = canvas.getBoundingClientRect();
+  mouse.x = e.clientX - rect.left;
+  mouse.y = e.clientY - rect.top;
+});
+
+canvas.addEventListener("mousedown", () => {
+  if (player.health <= 0) return;
+
+  // Set player to attack state
+  if (player.attackCooldown <= 0) {
+  player.state = "attack";
+  player.frameIndex = 0;
+  player.frameTimer = 0;
+  player.attackCooldown = player.attackDelay;
+}
+
+
+  const startX = player.x + player.size / 2;
+  const startY = player.y + player.size / 2;
+  const dx = mouse.x - startX;
+  const dy = mouse.y - startY;
+  const dist = Math.hypot(dx, dy);
+
+  if (dist === 0) return;
+
+  const dirX = dx / dist;
+  const dirY = dy / dist;
+  const speed = 400;
+
+  bullets.push(new Bullet(startX, startY, dirX * speed, dirY * speed));
+
+  // Play attack sound
+  playerAttackSound.currentTime = 0;
+playerAttackSound.play();
+
+});
+
+
+restartBtn.addEventListener("click", () => {
+  gameOver = false;
+  victory = false;
+  gameOverTimer = 0;
+
+  player.health = 100;
+  player.x = 100;
+  player.y = 100;
+
+  gorgon.health = 500;
+  gorgon.alive = true;
+  gorgon.state = "run";
+  gorgon.frameIndex = 0;
+
+  bullets.length = 0;
+  healthDrops.length = 0;
+
+  canvas.style.display = "block";
+  restartBtn.style.display = "none";
+  gameOverImage.style.display = "none";
+  victoryImage.style.display = "none";
+
+  if (stageMusic.paused) stageMusic.play();
+
+  console.log("Game restarted!");
+});
+
+
+const bullets = [];
+const particles = [];
+const healthDrops = [];
+
+const player = new Player(100, 100);
+const gorgon = new GorgonBoss(400, 200, 128, 146);
+
+let lastTime = performance.now();
+
+let healthDropTimer = 0;
+const healthDropInterval = 20000;
+
+function spawnHealthDrop() {
+  const x = Math.random() * (canvas.width - 24);
+  const y = Math.random() * (canvas.height - 24);
+  healthDrops.push(new HealthDrop(x, y));
+}
+
+function gameLoop(timestamp) {
+  const dt = timestamp - lastTime;
+  lastTime = timestamp;
+
+  if (!gameOver && player.health <= 0) {
+    gameOver = true;
+    gameOverTimer = 0;
+    console.log("Player died! Game over triggered.");
+  }
+
+  if (gameOver) {
+  // Show game over screen
+  gameOverTimer += dt;
+
+  if (gameOverTimer < 7000) {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Draw the kossa image as background instead of black
+  const kossaImg = document.getElementById("kossaImage");
+  ctx.drawImage(kossaImg, 0, 0, canvas.width, canvas.height);
+
+  ctx.fillStyle = "red";
+  ctx.font = "48px Arial";
+  ctx.textAlign = "center";
+  ctx.fillText("", canvas.width / 2, canvas.height / 2);
+
+  // Hide the img element since we're drawing it on canvas
+  kossaImg.style.display = "none";
+
+  gameOverImage.style.display = "none";
+  restartBtn.style.display = "none";
+  victoryImage.style.display = "none";
+  canvas.style.display = "block";
+}
+ else {
+    canvas.style.display = "none";
+    gameOverImage.style.display = "block";
+    restartBtn.style.display = "block";
+    victoryImage.style.display = "none";
+
+    if (!stageMusic.paused) stageMusic.pause();
+  }
+
+  requestAnimationFrame(gameLoop);
+  return;
+}
+
+if (victory) {
+  if (!victoryTimerStarted) {
+    victoryTimerStarted = true;
+    victoryTimer = 0;
+  }
+  victoryTimer += dt;
+
+  if (victoryTimer < 2500) {
+    // Wait 4 seconds before showing victory screen
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(backgroundImage, 0, 0, canvas.width, canvas.height);
+
+    ctx.fillStyle = "yellow";
+    ctx.font = "bold 48px Arial";
+    ctx.textAlign = "center";
+    ctx.fillText("Defeated the Gorgon!", canvas.width / 2, canvas.height / 2);
+  } else {
+    // Show victory screen after 2.5 seconds
+    canvas.style.display = "block";  
+    victoryImage.style.display = "block";
+    restartBtn.style.display = "block";
+    gameOverImage.style.display = "none";
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    ctx.drawImage(victoryImage, 0, 0, canvas.width, canvas.height);
+
+    ctx.fillStyle = "red";
+    ctx.font = "bold 64px Arial";
+    ctx.textAlign = "center";
+    ctx.fillText("YOU WON", canvas.width / 2, canvas.height / 2);
+  }
+}
+
+
+
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(backgroundImage, 0, 0, canvas.width, canvas.height);
+
+  if (player.health > 0) player.update(dt, keys);
+
+  gorgon.update(dt);
+  gorgon.attemptAttack(player, dt);
+
+  bullets.forEach(bullet => bullet.update(dt));
+
+  for (let i = bullets.length - 1; i >= 0; i--) {
+    if (!bullets[i].active) bullets.splice(i, 1);
+  }
+
+  bullets.forEach(bullet => {
+    if (
+      bullet.x > gorgon.x && bullet.x < gorgon.x + gorgon.frameWidth &&
+      bullet.y > gorgon.y && bullet.y < gorgon.y + gorgon.frameHeight
+    ) {
+      gorgon.takeDamage(10);
+      bullet.active = false;
+    }
+  });
+
+  healthDropTimer += dt;
+  if (healthDropTimer >= healthDropInterval) {
+    healthDropTimer = 0;
+    spawnHealthDrop();
+  }
+
+  healthDrops.forEach(drop => {
+    if (drop.active) {
+      const distX = player.x + player.size / 2 - (drop.x + drop.size / 2);
+      const distY = player.y + player.size / 2 - (drop.y + drop.size / 2);
+      const distance = Math.hypot(distX, distY);
+
+      if (distance < player.size / 2 + drop.size / 2) {
+        drop.active = false;
+        player.health += 50;
+        if (player.health > 100) player.health = 100;
+        console.log("Health power-up collected! Player healed to " + player.health);
+      }
+    }
+  });
+
+  player.draw(ctx);
+  gorgon.draw(ctx, player.x);
+// Draw blood particles
+for (let i = particles.length - 1; i >= 0; i--) {
+  particles[i].update(dt);
+  if (particles[i].isDead()) particles.splice(i, 1);
+}
+particles.forEach(p => p.draw(ctx));
+
+
+  bullets.forEach(bullet => bullet.draw(ctx));
+  healthDrops.forEach(drop => drop.draw(ctx));
+
+  ctx.fillStyle = "white";
+  ctx.font = "20px Arial";
+  ctx.fillText(`Player Health: ${player.health}`, 10, 25);
+  ctx.fillText(`Gorgon Health: ${gorgon.health}`, 10, 50);
+
+  if (stageMusic.paused && !gameOver) {
+    stageMusic.play();
+  }
+
+  requestAnimationFrame(gameLoop);
+}
+
+// Delay game start until "Get Ready!" screen is shown
+const startScreen = document.getElementById("startScreen");
+
+setTimeout(() => {
+  // Hide start screen
+  startScreen.style.display = "none";
+
+  // Show canvas and start the game
+  canvas.style.display = "block";
+  stageMusic.play();
+  lastTime = performance.now(); // reset timer before loop
+  requestAnimationFrame(gameLoop);
+}, 3000); // wait 3 seconds
+
+</script>
+
+</body>
+</html>

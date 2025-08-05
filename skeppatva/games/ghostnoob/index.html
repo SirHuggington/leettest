@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Dice Chess (With Skip Vibe)</title>
+  <style>
+    body { background: #222; color: #fff; font-family: Arial, sans-serif; text-align: center; margin: 0; padding: 20px; }
+    h1 { margin-bottom: 10px; }
+    #intro, #settings, #game { max-width: 600px; margin: auto; text-align: left; }
+    .hidden { display: none; }
+    button { padding: 10px 20px; font-size: 16px; margin: 10px; background: #444; color: white; border: none; border-radius: 5px; cursor: pointer; }
+    #dice { font-size: 40px; margin: 10px; display: inline-block; }
+    #allowed { font-size: 20px; }
+    table { border-collapse: collapse; margin: 10px auto; }
+    td { width: 50px; height: 50px; text-align: center; vertical-align: middle; font-size: 32px; cursor: pointer; user-select: none; transition: background-color 0.2s; }
+    .white { background: #f0d9b5; }
+    .black { background: #b58863; }
+    .selected { outline: 3px solid yellow; }
+    .red { color: #ff4d4d; }
+    .blue { color: #4d94ff; }
+    #scoreboard { display: flex; justify-content: space-around; margin:10px; }
+    #scoreboard div { font-size: 18px; }
+    .mode-desc, .opt-desc { font-size: 14px; margin-left: 20px; margin-bottom: 10px; }
+
+    /* SHAKING ANIMATION */
+    @keyframes shake {
+      0% { transform: translateX(0); }
+      20% { transform: translateX(-4px); }
+      40% { transform: translateX(4px); }
+      60% { transform: translateX(-4px); }
+      80% { transform: translateX(4px); }
+      100% { transform: translateX(0); }
+    }
+    .shake {
+      animation: shake 0.6s ease;
+    }
+
+    /* SKIP ALERT OVERLAY */
+    #skip-alert {
+      position: fixed;
+      top: 20px; left: 50%; transform: translateX(-50%);
+      background: #ff4d4d; color: white;
+      padding: 15px 25px; border-radius: 5px;
+      font-size: 1.2rem; font-weight: bold;
+      opacity: 0; pointer-events: none;
+      transition: opacity 0.3s ease;
+      z-index: 10000;
+    }
+    #skip-alert.show {
+      opacity: 1;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- SKIP ALERT -->
+  <div id="skip-alert">Dang, no moves for that piece! Turn lost!</div>
+  <audio id="buzz-sound" src="buzz.mp3" preload="auto"></audio>
+
+  <!-- INTRO -->
+  <div id="intro" style="
+    background-image: url('your-background.png');
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    color: #111;
+    padding: 20px;
+  ">
+    <h1>🎲 Dice Chess</h1>
+    <p>Dice Chess adds a roll‑to‑move mechanic on top of standard chess. Each turn you roll a die (1–6) to determine which piece type you can move:</p>
+    <ul>
+      <li>1: Pawn</li><li>2: Knight</li><li>3: Bishop</li>
+      <li>4: Rook</li><li>5: Queen</li><li>6: King</li>
+    </ul>
+    <h2>Modes</h2>
+    <ul>
+      <li><strong>Basic</strong>: King capture wins. Scoring for fun.</li>
+      <li><strong>Mode 1</strong>: Capture‑Value (P=1,N/B=3,R=5,Q=9). First to 30 wins.</li>
+      <li><strong>Mode 2</strong>: Capture+Survival (+0.5 pts/move). Highest after 40 turns or checkmate wins.</li>
+      <li><strong>Mode 3</strong>: Threshold→Sudden‑Death (25 pts→next checkmate wins).</li>
+    </ul>
+    <h2>Options</h2>
+    <ul>
+      <li><label><input type="checkbox" id="optSurvival"> Survival Bonus</label></li>
+      <li><label><input type="checkbox" id="optReroll"> Reroll Credit</label></li>
+      <li><label><input type="checkbox" id="optEnforce"> Enforce Dice Move</label></li>
+    </ul>
+    <div style="text-align:center"><button onclick="showSettings()">Continue</button></div>
+  </div>
+
+  <!-- SETTINGS -->
+  <div id="settings" class="hidden">
+    <h2>Choose Mode & Options</h2>
+    <label><input type="radio" name="mode" value="basic" checked> Basic</label>
+      <div class="mode-desc">King capture wins. Scoring for fun.</div>
+    <label><input type="radio" name="mode" value="rs1"> Mode 1: Capture‑Value</label>
+      <div class="mode-desc">First to 30 pts via captures wins.</div>
+    <label><input type="radio" name="mode" value="rs2"> Mode 2: Capture+Survival</label>
+      <div class="mode-desc">+0.5 pts/move + capture pts. Highest after 40 turns wins.</div>
+    <label><input type="radio" name="mode" value="rs3"> Mode 3: Threshold→Sudden‑Death</label>
+      <div class="mode-desc">25 pts→sudden‑death: next checkmate wins.</div>
+    <div style="text-align:center"><button onclick="startGame()">Start Game</button></div>
+  </div>
+
+  <!-- GAME -->
+  <div id="game" class="hidden">
+    <div id="scoreboard">
+      <div>Red (P1): <span id="score1">0</span></div>
+      <div>Blue (P2): <span id="score2">0</span></div>
+    </div>
+    <div style="text-align:center"><button onclick="rollDice()">Roll Dice</button></div>
+    <div style="text-align:center">
+      <div id="dice">🎲</div>
+      <div id="allowed">Allowed piece: -</div>
+    </div>
+    <table id="chessboard"></table>
+  </div>
+
+  <script>
+  // ELEMENTS
+  const introEl    = document.getElementById('intro');
+  const settingsEl = document.getElementById('settings');
+  const gameEl     = document.getElementById('game');
+  const boardEl    = document.getElementById('chessboard');
+  const diceEl     = document.getElementById('dice');
+  const allowedEl  = document.getElementById('allowed');
+  const score1El   = document.getElementById('score1');
+  const score2El   = document.getElementById('score2');
+  const alertEl    = document.getElementById('skip-alert');
+  const buzzSound  = document.getElementById('buzz-sound');
+
+  // STATE
+  let board, turn, allowedType;
+  let mode, optSurvival, optReroll, optEnforce, suddenDeath;
+  let score1, score2, turnsCount;
+  const threshold = 25, winTarget = 30;
+  const initialPosition = [
+  ['r','n','b','q','k','b','n','r'],  // Black back rank (Blue pieces)
+  ['p','p','p','p','p','p','p','p'],  // Black pawns
+  ['','','','','','','',''],          // Empty row
+  ['','','','','','','',''],          // Empty row
+  ['','','','','','','',''],          // Empty row
+  ['','','','','','','',''],          // Empty row
+  ['P','P','P','P','P','P','P','P'],  // White pawns (Red pieces)
+  ['R','N','B','Q','K','B','N','R'],  // White back rank
+];
+
+  const pieceNames = { p:'Pawn',n:'Knight',b:'Bishop',r:'Rook',q:'Queen',k:'King' };
+  const pieceIcons = { p:'♟',r:'♜',n:'♞',b:'♝',q:'♛',k:'♚',P:'♙',R:'♖',N:'♘',B:'♗',Q:'♕',K:'♔' };
+  const values     = { p:1,n:3,b:3,r:5,q:9,k:0 };
+
+  // UI Transitions
+  function showSettings(){
+    introEl.classList.add('hidden');
+    settingsEl.classList.remove('hidden');
+  }
+  function startGame(){
+    mode        = document.querySelector('input[name=mode]:checked').value;
+    optSurvival = document.getElementById('optSurvival').checked;
+    optReroll   = document.getElementById('optReroll').checked;
+    optEnforce  = document.getElementById('optEnforce').checked;
+    if(mode==='rs2'||mode==='rs3') optEnforce=true;
+    board = JSON.parse(JSON.stringify(initialPosition));
+    turn='w'; allowedType=null; suddenDeath=false;
+    score1=score2=turnsCount=0; updateScores();
+    settingsEl.classList.add('hidden'); gameEl.classList.remove('hidden');
+    drawBoard();
+  }
+
+  // ROLL LOGIC
+  function rollDice(){
+    const types  = ['p','n','b','r','q','k'];
+    const movable= types.filter(t=>hasLegalMoveForType(t));
+    if(movable.length===0){ skipTurn(); return; }
+    allowedType = movable[Math.floor(Math.random()*movable.length)];
+    diceEl.textContent    = `🎲 ${['1','2','3','4','5','6'][['p','n','b','r','q','k'].indexOf(allowedType)]}`;
+    allowedEl.textContent = `Allowed piece: ${pieceNames[allowedType]}`;
+    selected=null; drawBoard();
+  }
+
+  // SKIP TURN WITH VIBE
+  function skipTurn(){
+    // play buzz
+    buzzSound.currentTime = 0;
+    buzzSound.play();
+    // shake dice
+    diceEl.classList.add('shake');
+    setTimeout(()=> diceEl.classList.remove('shake'), 600);
+    // show alert
+    alertEl.classList.add('show');
+    setTimeout(()=> alertEl.classList.remove('show'), 2000);
+
+    if(optReroll){
+      if(turn==='w') score1+=0.2; else score2+=0.2;
+      updateScores();
+    }
+    turn = turn==='w'?'b':'w';
+    diceEl.textContent='🎲'; allowedEl.textContent='Allowed piece: -';
+    drawBoard();
+  }
+
+  // DRAW BOARD & CLICKS
+  let selected = null;
+  function drawBoard(){
+    boardEl.innerHTML='';
+    for(let y=0;y<8;y++){
+      const tr=document.createElement('tr');
+      for(let x=0;x<8;x++){
+        const td=document.createElement('td');
+        const p=board[y][x];
+        td.className=(x+y)%2===0?'white':'black';
+        td.textContent = pieceIcons[p]||'';
+        if(p) td.classList.add(p===p.toUpperCase()?'red':'blue');
+        if(selected&&selected.x===x&&selected.y===y) td.classList.add('selected');
+        td.onclick=()=>handleCellClick(x,y);
+        tr.appendChild(td);
+      }
+      boardEl.appendChild(tr);
+    }
+  }
+  function handleCellClick(x,y){
+    const p=board[y][x];
+    if(selected){
+      if(tryMove(selected.x,selected.y,x,y)){ selected=null; drawBoard(); checkEnd(); }
+      else { selected=null; drawBoard(); }
+    } else if(p&&isPlayersPiece(p)&&(!optEnforce||p.toLowerCase()===allowedType)){
+      selected={x,y}; drawBoard();
+    }
+  }
+
+  // MOVE VALIDATION
+  function isPlayersPiece(p){ return turn==='w'?p===p.toUpperCase():p===p.toLowerCase(); }
+  function isPathClear(sx,sy,dx,dy){
+    let xs=dx===sx?0:(dx>sx?1:-1), ys=dy===sy?0:(dy>sy?1:-1);
+    let x=sx+xs, y=sy+ys;
+    while(x!==dx||y!==dy){ if(board[y][x]!=='') return false; x+=xs; y+=ys; }
+    return true;
+  }
+  function canMove(sx,sy,dx,dy){
+    const p=board[sy][sx], dest=board[dy][dx];
+    if(!p) return false;
+    if(dest&&(turn==='w'?dest===dest.toUpperCase():dest===dest.toLowerCase())) return false;
+    const dxA=Math.abs(dx-sx), dyA=Math.abs(dy-sy), dir=turn==='w'?-1:1, t=p.toLowerCase();
+    if(t==='p'){ if(dx===sx&&dy-sy===dir&&!dest) return true; if(Math.abs(dx-sx)===1&&dy-sy===dir&&dest) return true; return false; }
+    if(t==='r'){ if(sx===dx||sy===dy) return isPathClear(sx,sy,dx,dy); return false; }
+    if(t==='n') return (dxA===1&&dyA===2)||(dxA===2&&dyA===1);
+    if(t==='b') return dxA===dyA;      // bishops phase
+    if(t==='q') return dxA===dyA||sx===dx||sy===dy; // queens phase
+    if(t==='k') return dxA<=1&&dyA<=1;
+    return false;
+  }
+  function hasLegalMoveForType(type){
+    for(let y=0;y<8;y++) for(let x=0;x<8;x++){
+      const p=board[y][x];
+      if(p&&((turn==='w'?p===p.toUpperCase():p===p.toLowerCase()))&&p.toLowerCase()===type){
+        for(let dy=0;dy<8;dy++) for(let dx=0;dx<8;dx++){
+          if(canMove(x,y,dx,dy)) return true;
+        }
+      }
+    }
+    return false;
+  }
+  function tryMove(sx,sy,dx,dy){
+    if(!canMove(sx,sy,dx,dy)) return false;
+    const p=board[sy][sx], dest=board[dy][dx];
+    if(dest){ const pts=values[dest.toLowerCase()]; if(turn==='w') score1+=pts; else score2+=pts; }
+    if(optSurvival){ if(turn==='w') score1+=0.5; else score2+=0.5; }
+    board[dy][dx]=p; board[sy][sx]='';
+    turnsCount++; updateScores();
+    turn=turn==='w'?'b':'w';
+    allowedType=null; diceEl.textContent='🎲'; allowedEl.textContent='Allowed piece: -';
+    drawBoard();
+    return true;
+  }
+
+  function hasKing(color){ return board.flat().some(p=>color==='w'?p==='K':p==='k'); }
+  function updateScores(){ score1El.textContent=score1; score2El.textContent=score2; }
+  function awardCheckmateBonus(w){ if(w==='w'){score1+=10;score2+=2;}else{score2+=10;score1+=2;} updateScores(); }
+  function announceWinner(w,draw=false){
+    const name=w==='w'?'Red (P1)':'Blue (P2)';
+    if(draw) alert(`Draw! Final — Red: ${score1}, Blue: ${score2}`);
+    else alert(`${name} wins! Final — Red: ${score1}, Blue: ${score2}`);
+    location.reload();
+  }
+  function checkEnd(){
+    if(!hasKing('w')||!hasKing('b')){
+      const win=hasKing('w')?'w':'b';
+      awardCheckmateBonus(win); announceWinner(win);
+      return;
+    }
+    if(mode==='rs1'&&(score1>=winTarget||score2>=winTarget)){
+      announceWinner(score1>=winTarget?'w':'b'); return;
+    }
+    if(mode==='rs2'&&Math.floor(turnsCount/2)>=40){
+      if(score1!==score2) announceWinner(score1>score2?'w':'b'); else announceWinner(null,true);
+      return;
+    }
+    if(mode==='rs3'&&!suddenDeath&&(score1>=threshold||score2>=threshold)){
+      suddenDeath=true;
+      alert('Threshold reached! Sudden‑death now: Next checkmate wins.');
+    }
+  }
+  </script>
+</body>
+</html>

@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Boss Fight — Enhanced Edition</title>
+  <style>
+    body { margin: 0; overflow: hidden; background: #000; font-family: sans-serif; color: #fff; }
+    #hud { position: absolute; width: 100%; top: 10px; left: 0; display: flex; justify-content: space-between; padding: 0 10px; z-index: 2; }
+    .bar { background: #400; height: 20px; width: 200px; position: relative; }
+    .fill { background: #f00; height: 100%; width: 100%; }
+    #overlay {
+      position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0,0,0,0.8); color: #fff;
+      font-size: 48px; display: flex;
+      align-items: center; justify-content: center; flex-direction: column;
+      cursor: pointer; z-index: 3;
+    }
+    #overlay.hidden { display: none; }
+    #crosshair {
+      position: absolute; top: 50%; left: 50%;
+      width: 20px; height: 20px; margin: -10px 0 0 -10px;
+      pointer-events: none;
+      background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"><circle cx="10" cy="10" r="1.5" fill="white"/><line x1="10" y1="0" x2="10" y2="6" stroke="white" stroke-width="1"/><line x1="10" y1="14" x2="10" y2="20" stroke="white" stroke-width="1"/><line x1="0" y1="10" x2="6" y2="10" stroke="white" stroke-width="1"/><line x1="14" y1="10" x2="20" y2="10" stroke="white" stroke-width="1"/></svg>');
+    }
+  </style>
+</head>
+<body>
+  <div id="hud">
+    <div id="playerHealth" class="bar"><div class="fill" id="playerHealthFill"></div></div>
+    <div id="score">Score: 0</div>
+    <div id="bossHealth" class="bar"><div class="fill" id="bossHealthFill"></div></div>
+  </div>
+  <div id="overlay">Click to Start</div>
+  <div id="crosshair"></div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
+  <script>
+    let scene, camera, renderer, clock;
+    let player = { health: 100, score: 0, pos: new THREE.Vector3(), vel: new THREE.Vector3(), onGround: true };
+    let boss, bossMaterial, bossHealth = 1000, bossPhase2 = false, bossHitTime = 0, bossFadeTime = 0;
+    let bossDashCD = 0, bossSpinCD = 5, bossShootCD = 2;
+    let bullets = [], bossBullets = [], particles = [];
+    let keys = {}, canLook = false, gameOver = false, victory = false;
+    const moveSpeed = 0.1, dashSpeed = 2.0, gravity = 0.02, jumpSpeed = 0.3;
+    let yaw = 0, pitch = 0;
+
+    const playerBar = document.getElementById('playerHealthFill');
+    const bossBar = document.getElementById('bossHealthFill');
+    const scoreDiv = document.getElementById('score');
+    const overlay = document.getElementById('overlay');
+    const crosshair = document.getElementById('crosshair');
+
+    const shootSound = new Audio('https://cdn.pixabay.com/audio/2022/03/15/audio_4704ed46a3.mp3');
+    const hitSound = new Audio('https://cdn.pixabay.com/audio/2022/03/15/audio_41b2e1bbf5.mp3');
+    const music = new Audio('https://cdn.pixabay.com/audio/2022/03/01/audio_cddfa4c49a.mp3');
+    music.loop = true;
+
+    init();
+    requestAnimationFrame(animate);
+
+    function init() {
+      scene = new THREE.Scene();
+      camera = new THREE.PerspectiveCamera(75, innerWidth / innerHeight, 0.1, 1000);
+      camera.position.set(0, 1.6, 0);
+      renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(innerWidth, innerHeight);
+      document.body.appendChild(renderer.domElement);
+      clock = new THREE.Clock();
+
+      const light = new THREE.DirectionalLight(0xffffff, 1);
+      light.position.set(5, 10, 5);
+      scene.add(light, new THREE.AmbientLight(0x404040));
+
+      const ground = new THREE.Mesh(
+        new THREE.PlaneGeometry(100, 100),
+        new THREE.MeshPhongMaterial({ color: 0x222222 })
+      );
+      ground.rotation.x = -Math.PI / 2;
+      scene.add(ground);
+
+      // Obstacles
+      for (let i = 0; i < 10; i++) {
+        const box = new THREE.Mesh(
+          new THREE.BoxGeometry(2, 2, 2),
+          new THREE.MeshPhongMaterial({ color: 0x333333 })
+        );
+        box.position.set((Math.random() - 0.5) * 50, 1, (Math.random() - 0.5) * 50);
+        scene.add(box);
+      }
+
+      bossMaterial = new THREE.MeshPhongMaterial({ color: 0x550000, emissive: 0x770000, emissiveIntensity: 1, transparent: true });
+      boss = new THREE.Mesh(new THREE.SphereGeometry(1.5, 16, 16), bossMaterial);
+      boss.position.set(0, 1.5, -30);
+      scene.add(boss);
+
+      window.addEventListener('resize', onResize);
+      document.addEventListener('keydown', e => keys[e.code] = true);
+      document.addEventListener('keyup', e => keys[e.code] = false);
+      document.addEventListener('mousedown', e => {
+        if (e.button === 2) {
+          document.body.requestPointerLock();
+        } else {
+          shoot();
+        }
+      });
+      document.addEventListener('mouseup', e => {
+        if (e.button === 2) document.exitPointerLock();
+      });
+      document.addEventListener('pointerlockchange', () => {
+        canLook = (document.pointerLockElement === document.body);
+      });
+      document.addEventListener('mousemove', e => {
+        if (canLook && !gameOver) {
+          yaw -= e.movementX * 0.002;
+          pitch -= e.movementY * 0.002;
+          pitch = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, pitch));
+        }
+      });
+      overlay.addEventListener('click', () => {
+        overlay.classList.add('hidden');
+        music.play();
+      });
+      renderer.domElement.addEventListener('contextmenu', e => e.preventDefault());
+    }
+
+    function onResize() {
+      camera.aspect = innerWidth / innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(innerWidth, innerHeight);
+    }
+
+    function shoot() {
+      if (gameOver) return;
+      const bullet = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 8), new THREE.MeshBasicMaterial({ color: 0xffff00 }));
+      bullet.position.copy(camera.position);
+      const dir = new THREE.Vector3();
+      camera.getWorldDirection(dir);
+      bullet.userData = { vel: dir.multiplyScalar(1) };
+      bullets.push(bullet);
+      scene.add(bullet);
+      shootSound.cloneNode().play();
+    }
+
+    function spawnParticle(pos) {
+      const p = new THREE.Mesh(new THREE.SphereGeometry(0.05), new THREE.MeshBasicMaterial({ color: 0xff0000 }));
+      p.position.copy(pos);
+      p.userData = { ttl: 0.5 };
+      scene.add(p);
+      particles.push(p);
+    }
+
+    function animate() {
+      const dt = clock.getDelta();
+      if (!gameOver) {
+        updatePlayer(dt);
+        updateBoss(dt);
+        updateBullets(dt);
+        updateParticles(dt);
+        updateUI();
+      }
+      renderer.render(scene, camera);
+      requestAnimationFrame(animate);
+    }
+
+    function updatePlayer(dt) {
+      const eY = new THREE.Euler(0, yaw, 0);
+      const fwd = new THREE.Vector3(0, 0, -1).applyEuler(eY);
+      const right = new THREE.Vector3(1, 0, 0).applyEuler(eY);
+      if (keys['KeyW']) player.pos.add(fwd.clone().multiplyScalar(moveSpeed));
+      if (keys['KeyS']) player.pos.add(fwd.clone().multiplyScalar(-moveSpeed));
+      if (keys['KeyA']) player.pos.add(right.clone().multiplyScalar(-moveSpeed));
+      if (keys['KeyD']) player.pos.add(right.clone().multiplyScalar(moveSpeed));
+      if (keys['Space'] && player.onGround) {
+        player.vel.y = jumpSpeed;
+        player.onGround = false;
+      }
+      player.vel.y -= gravity;
+      player.pos.y += player.vel.y;
+      if (player.pos.y <= 0) {
+        player.pos.y = 0;
+        player.vel.y = 0;
+        player.onGround = true;
+      }
+      camera.position.copy(player.pos).add(new THREE.Vector3(0, 1.6, 0));
+      camera.quaternion.setFromEuler(new THREE.Euler(pitch, yaw, 0, 'YXZ'));
+    }
+
+    function updateBoss(dt) {
+      if (!boss) return;
+      if (bossHealth <= 0) {
+        bossFadeTime = bossFadeTime || 2.0;
+        bossFadeTime -= dt;
+        bossMaterial.opacity = Math.max(0, bossFadeTime / 2);
+        if (bossFadeTime <= 0) {
+          scene.remove(boss);
+          boss = null;
+          if (!victory) {
+            victory = gameOver = true;
+            overlay.innerHTML = 'Victory!<br><small>Click to Restart</small>';
+            overlay.classList.remove('hidden');
+          }
+        }
+        return;
+      }
+
+      if (!bossPhase2 && bossHealth < 500) bossPhase2 = true;
+      bossMaterial.emissiveIntensity = 1 + Math.sin(clock.getElapsedTime() * 3) * 0.5;
+      if (bossHitTime > 0) {
+        bossHitTime -= dt;
+        bossMaterial.opacity = Math.random() * 0.5 + 0.5;
+      } else bossMaterial.opacity = 1.0;
+
+      const dir = new THREE.Vector3(player.pos.x - boss.position.x, 0, player.pos.z - boss.position.z).normalize();
+      if (!boss.userData.dash) {
+        boss.position.add(dir.clone().multiplyScalar(moveSpeed * (bossPhase2 ? 1.0 : 0.5)));
+        bossDashCD -= dt;
+        if (bossDashCD <= 0) {
+          boss.userData.dash = true;
+          boss.userData.dashDir = dir.clone();
+          boss.userData.dashTime = 0.3;
+          bossDashCD = (bossPhase2 ? 3 : 5) + Math.random() * 2;
+        }
+      } else {
+        boss.userData.dashTime -= dt;
+        boss.position.add(boss.userData.dashDir.clone().multiplyScalar(dashSpeed));
+        if (boss.userData.dashTime <= 0) boss.userData.dash = false;
+      }
+
+      bossSpinCD -= dt;
+      if (bossSpinCD <= 0) {
+        const cnt = 8;
+        for (let i = 0; i < cnt; i++) {
+          const angle = (i / cnt) * Math.PI * 2;
+          const b = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 8), new THREE.MeshBasicMaterial({ color: 0x00ff00 }));
+          b.position.copy(boss.position);
+          b.userData = { vel: new THREE.Vector3(Math.cos(angle), 0, Math.sin(angle)).multiplyScalar(0.5) };
+          bossBullets.push(b);
+          scene.add(b);
+        }
+        bossSpinCD = 5 + Math.random() * 2;
+      }
+
+      bossShootCD -= dt;
+      if (bossShootCD <= 0) {
+        const toPlayer = new THREE.Vector3().subVectors(player.pos, boss.position).normalize();
+        const b = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 8), new THREE.MeshBasicMaterial({ color: 0xff00ff }));
+        b.position.copy(boss.position);
+        b.userData = { vel: toPlayer.clone().multiplyScalar(0.8) };
+        bossBullets.push(b);
+        scene.add(b);
+        bossShootCD = bossPhase2 ? 0.7 : 2;
+      }
+
+      if (boss.position.distanceTo(new THREE.Vector3(player.pos.x, boss.position.y, player.pos.z)) < 1.5) {
+        player.health -= 10;
+        player.pos.set(0, 0, 0);
+        if (player.health <= 0 && !gameOver) {
+          player.health = 0;
+          gameOver = true;
+          overlay.innerHTML = 'Game Over<br><small>Click to Restart</small>';
+          overlay.classList.remove('hidden');
+        }
+      }
+    }
+
+    function updateBullets(dt) {
+      bullets.forEach((b, i) => {
+        b.position.add(b.userData.vel.clone().multiplyScalar(dt * 50));
+        if (!boss || b.position.distanceTo(boss.position) > 100) scene.remove(b), bullets.splice(i, 1);
+        else if (b.position.distanceTo(boss.position) < 1.5) {
+          scene.remove(b); bullets.splice(i, 1);
+          bossHealth -= 10; player.score += 10; bossHitTime = 0.2;
+          if (bossHealth < 0) bossHealth = 0;
+          hitSound.cloneNode().play();
+          spawnParticle(boss.position);
+        }
+      });
+      bossBullets.forEach((b, i) => {
+        b.position.add(b.userData.vel.clone().multiplyScalar(dt * 50));
+        const camPos = new THREE.Vector3(player.pos.x, player.pos.y + 1.6, player.pos.z);
+        if (b.position.distanceTo(camPos) < 0.5) {
+          scene.remove(b);
+          bossBullets.splice(i, 1);
+          player.health -= 5;
+          if (player.health <= 0 && !gameOver) {
+            player.health = 0;
+            gameOver = true;
+            overlay.innerHTML = 'Game Over<br><small>Click to Restart</small>';
+            overlay.classList.remove('hidden');
+          }
+        } else if (b.position.distanceTo(camPos) > 100) {
+          scene.remove(b);
+          bossBullets.splice(i, 1);
+        }
+      });
+    }
+
+    function updateParticles(dt) {
+      particles.forEach((p, i) => {
+        p.userData.ttl -= dt;
+        if (p.userData.ttl <= 0) {
+          scene.remove(p);
+          particles.splice(i, 1);
+        }
+      });
+    }
+
+    function updateUI() {
+      playerBar.style.width = player.health + '%';
+      bossBar.style.width = (bossHealth / 10) + '%';
+      scoreDiv.textContent = 'Score: ' + player.score;
+    }
+  </script>
+</body>
+</html>

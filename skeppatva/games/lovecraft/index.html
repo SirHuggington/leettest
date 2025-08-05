@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>🦁 vs Cosmic Horror</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: sans-serif;
+      background: #000;
+      color: #fff;
+      overflow: hidden;
+      text-align: center;
+    }
+    canvas {
+      display: block;
+      margin: 0 auto;
+      background: #222;
+    }
+    #startScreen, #storyCanvas {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      background: black;
+      z-index: 10;
+    }
+    #startScreen button {
+      font-size: 24px;
+      padding: 10px 20px;
+      margin-top: 20px;
+    }
+    #storyCanvas img {
+      max-width: 100%;
+      max-height: 100%;
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      opacity: 0;
+      transition: opacity 1s;
+    }
+    #storyText {
+      position: absolute;
+      bottom: 50px;
+      width: 100%;
+      font-size: 24px;
+      color: white;
+      text-shadow: 0 0 10px black;
+    }
+    #gameOverScreen button {
+      font-size: 20px;
+      padding: 10px 20px;
+      margin-top: 20px;
+      z-index: 3;
+    }
+
+#overworldMap {
+  background: url('overworld.jpg') no-repeat center center;
+  background-size: cover;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  color: white;
+  z-index: 50;
+  font-family: sans-serif;
+}
+
+
+
+  </style>
+</head>
+<body>
+  <div id="startScreen">
+    <h1>Top-Down Shooter 🦁</h1>
+    <p>WASD to move • Mouse to aim • Click to shoot</p>
+    <button onclick="startStory()">Press Start</button>
+  </div>
+
+  <div id="storyCanvas" style="display: none;">
+    <img id="scene1" src="gameover.jpg">
+    <img id="scene2" src="https://i.redd.it/xhdrmvzkr3q91.jpg" alt="Lovecraft asleep">
+    <img id="scene3" src="3c9e8b05-c0c3-4de1-9d9d-94ccd5fad412.jpg" alt="Hero cat final">
+
+    <div id="storyText"></div>
+  </div>
+
+  <div id="gameOverScreen" style="display:none; position:absolute; top:0; left:0; right:0; bottom:0; background:black; z-index:20; justify-content:center; align-items:center; flex-direction:column;">
+    <img src="scene1.jpg" 
+         alt="Game Over Innsmouth" 
+         style="width:100%; height:100%; object-fit:cover; position:absolute; top:0; left:0; z-index:1;">
+    <div id="gameOverText" 
+         style="color:red; font-size:32px; font-weight:bold; z-index:2; text-shadow: 0 0 8px black; max-width: 90%; text-align:center;">
+      you failed to prevent the horror and now Lovecraft sleeps with the fishes... literally
+    </div>
+    <button onclick="location.reload()">Play Again</button><div style="
+  position: absolute;
+  bottom: 10px;
+  right: 10px;
+  font-size: 11px;
+  color: #aaa;
+  text-align: right;
+  max-width: 300px;
+  line-height: 1.4;
+  z-index: 3;
+  background: rgba(0, 0, 0, 0.6);
+  padding: 6px 8px;
+  border-radius: 6px;
+">
+  <div>Solar Winds (Cosmic Horror Atmosphere) by <a href="https://ailascott.com" target="_blank" style="color:#8cf;">Aila Scott</a></div>
+  <div>Music promoted by <a href="https://www.free-stock-music.com" target="_blank" style="color:#8cf;">free-stock-music.com</a></div>
+  <div>Creative Commons / Attribution 4.0 International (CC BY 4.0)</div>
+  <div><a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" style="color:#8cf;">https://creativecommons.org/licenses/by/4.0/</a></div>
+</div>
+
+  </div>
+
+<div id="pauseMenu" style="display:none; position:absolute; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.85); z-index:99; flex-direction:column; justify-content:center; align-items:center;">
+  <h1 style="color:white; font-size:48px;">⏸️ Paused</h1>
+  <button onclick="resumeGame()" style="font-size:24px; margin:10px; padding:10px 20px;">Resume</button>
+  <button onclick="quitToStart()" style="font-size:24px; margin:10px; padding:10px 20px;">Quit to Start</button>
+</div>
+
+
+  <canvas id="game" width="800" height="600" style="display:none;"></canvas>
+
+  <script>
+    const storyImages = [
+      { id: 'scene1', text: 'In the cursed streets of Innsmouth, where nightmares slither through shadows…' },
+      { id: 'scene2', text: 'The great dreamer, Lovecraft himself, lies paralyzed… haunted by what he dared to imagine.' },
+      { id: 'scene3', text: 'Only his cat, now awakened as a lion in the dream realm, can save him from the horrors within.' },
+    ];
+
+    const gameOverScreen = document.getElementById('gameOverScreen');
+    const startScreen = document.getElementById('startScreen');
+    const storyCanvas = document.getElementById('storyCanvas');
+    const gameCanvas = document.getElementById('game');
+
+    let storyInterval = null;
+    let current = 0;
+    let paused = false;
+
+    function startStory() {
+      kills = 0;
+      level = 1;
+      boss = null;
+      bossSpawned = false;
+
+      startScreen.style.display = 'none';
+      storyCanvas.style.display = 'block';
+
+      showScene(current);
+
+document.getElementById('bgMusic').play().catch(() => {});
+
+
+      storyInterval = setInterval(() => {
+        current++;
+        if (current < storyImages.length) {
+          showScene(current);
+        } else {
+          clearInterval(storyInterval);
+          startGame();
+        }
+      }, 10000);
+    }
+
+    function skipStory() {
+      clearInterval(storyInterval);
+      storyCanvas.style.display = 'none';
+      startGame();
+    }
+
+    function showScene(index) {
+      storyImages.forEach((img, i) => {
+        document.getElementById(img.id).style.opacity = i === index ? '1' : '0';
+      });
+      document.getElementById('storyText').textContent = storyImages[index].text;
+    }
+
+    function startGame() {
+  paused = false; // ✅ fix: unpause the game when starting
+  document.getElementById('pauseMenu').style.display = 'none'; // hide pause menu if somehow visible
+  storyCanvas.style.display = 'none';
+  gameCanvas.style.display = 'block';
+  loop();
+}
+
+    const c = document.getElementById('game');
+    const ctx = c.getContext('2d');
+
+    // --- Starfield Setup ---
+    const starCount = 150;
+    const stars = [];
+    for (let i = 0; i < starCount; i++) {
+      stars.push({
+        x: Math.random() * c.width,
+        y: Math.random() * c.height,
+        size: Math.random() * 1.5 + 0.5,
+        speed: Math.random() * 0.5 + 0.1
+      });
+    }
+
+    function updateStars() {
+      for (const star of stars) {
+        star.y += star.speed;
+        if (star.y > c.height) {
+          star.y = 0;
+          star.x = Math.random() * c.width;
+          star.size = Math.random() * 1.5 + 0.5;
+          star.speed = Math.random() * 0.5 + 0.1;
+        }
+      }
+    }
+
+    function drawStars() {
+      ctx.fillStyle = 'white';
+      for (const star of stars) {
+        ctx.beginPath();
+        ctx.arc(star.x, star.y, star.size, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    // --- End Starfield Setup ---
+
+    const player = {
+      x: c.width / 2,
+      y: c.height / 2,
+      speed: 3,
+      size: 20,
+      angle: 0,
+    };
+    const bullets = [], enemies = [];
+    let keys = {}, mouse = { x: 0, y: 0 };
+    let kills = 0, level = 1, bossSpawned = false, boss = null;
+    const hud = document.createElement('p');
+    hud.id = 'hud';
+    hud.style.position = 'absolute';
+    hud.style.top = '10px';
+    hud.style.left = '10px';
+    hud.style.color = 'white';
+    document.body.appendChild(hud);
+
+    const enemyTypes = [
+      { char: '😎', size: 20, speedMin: 1, speedMax: 2 },
+      { char: '👹', size: 25, speedMin: 1.5, speedMax: 2.5 },
+      { char: '👻', size: 15, speedMin: 2, speedMax: 3 },
+      { char: '🧟', size: 30, speedMin: 1, speedMax: 1.8 },
+      { char: '💀', size: 20, speedMin: 2.2, speedMax: 3.2 },
+      { char: '🤖', size: 25, speedMin: 2, speedMax: 3.5 },
+      { char: '🐉', size: 35, speedMin: 1.5, speedMax: 2.2 },
+      { char: '🕷️', size: 18, speedMin: 2.5, speedMax: 3.5 },
+      { char: '👺', size: 22, speedMin: 2, speedMax: 3 },
+      { char: '🐍', size: 20, speedMin: 2, speedMax: 3.5 }
+    ];
+
+    function getUnlockedEnemyTypes(level) {
+  if (currentStage && currentStage.enemies) {
+    return enemyTypes.filter(e => currentStage.enemies.includes(e.char));
+  }
+  if (level >= 10) return enemyTypes;
+  return enemyTypes.slice(0, level);
+}
+
+    function update() {
+      if (paused) return;
+
+      if (keys['w']) player.y -= player.speed;
+      if (keys['s']) player.y += player.speed;
+      if (keys['a']) player.x -= player.speed;
+      if (keys['d']) player.x += player.speed;
+      player.x = Math.max(player.size, Math.min(c.width - player.size, player.x));
+      player.y = Math.max(player.size, Math.min(c.height - player.size, player.y));
+      player.angle = Math.atan2(mouse.y - player.y, mouse.x - player.x);
+
+      bullets.forEach((b, i) => {
+        b.x += Math.cos(b.angle) * b.speed;
+        b.y += Math.sin(b.angle) * b.speed;
+        if (b.x < 0 || b.x > c.width || b.y < 0 || b.y > c.height)
+          bullets.splice(i, 1);
+      });
+
+      if (!bossSpawned && Math.random() < 0.02) {
+  const unlocked = getUnlockedEnemyTypes(level);
+
+  // Scale back by level
+  const maxIndex = Math.min(level, unlocked.length);
+  const et = unlocked[Math.floor(Math.random() * maxIndex)];
+
+  enemies.push({
+    x: Math.random() * c.width,
+    y: -20,
+    size: et.size,
+    speed: et.speedMin + Math.random() * (et.speedMax - et.speedMin),
+    char: et.char
+  });
+}
+
+      enemies.forEach((e, i) => {
+        const ang = Math.atan2(player.y - e.y, player.x - e.x);
+        e.x += Math.cos(ang) * e.speed;
+        e.y += Math.sin(ang) * e.speed;
+        if (Math.hypot(e.x - player.x, e.y - player.y) < (e.size + player.size) / 2) reset();
+
+        bullets.forEach((b, j) => {
+          if (Math.hypot(e.x - b.x, e.y - b.y) < (e.size + 5) / 2) {
+            enemies.splice(i, 1);
+            bullets.splice(j, 1);
+            kills++;
+            if (kills % 10 === 0 && level < 10) level++;
+          }
+        });
+      });
+
+      if (level === 10 && kills >= 100 && !bossSpawned) spawnBoss();
+
+      if (boss) {
+        const ang = Math.atan2(player.y - boss.y, player.x - boss.x);
+        boss.x += Math.cos(ang) * boss.speed;
+        boss.y += Math.sin(ang) * boss.speed;
+        if (Math.hypot(boss.x - player.x, boss.y - player.y) < (boss.size + player.size) / 2) reset();
+        bullets.forEach((b, j) => {
+          if (Math.hypot(boss.x - b.x, boss.y - b.y) < (boss.size + 5) / 2) {
+            bullets.splice(j, 1);
+            boss.hp -= 1;
+            if (boss.hp <= 0) {
+              boss = null;
+              alert("You defeated the Cosmic Horror! 🐙✨");
+            }
+          }
+        });
+      }
+
+      updateStars();
+
+      hud.textContent = `Level: ${level} | Kills: ${kills}`;
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, c.width, c.height);
+
+      // Draw starfield first (background)
+      drawStars();
+
+      ctx.save();
+      ctx.translate(player.x, player.y);
+      ctx.rotate(player.angle);
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.font = `${player.size * 1.5}px serif`;
+      ctx.fillText('🔫', -player.size * 2.5, 0);
+      ctx.font = `${player.size * 2}px serif`;
+      ctx.fillText('🦁', 0, 0);
+      ctx.save();
+      ctx.translate(player.size * 2.5, 0);
+      ctx.scale(-1, 1);
+      ctx.font = `${player.size * 1.5}px serif`;
+      ctx.fillText('🔫', 0, 0);
+      ctx.restore();
+      ctx.restore();
+
+      bullets.forEach(b => {
+        ctx.save();
+        ctx.translate(b.x, b.y);
+        ctx.rotate(b.angle);
+        ctx.fillStyle = 'yellow';
+        ctx.fillRect(-2, -2, 4, 4);
+        ctx.restore();
+      });
+
+      enemies.forEach(e => {
+        ctx.font = `${e.size * 2}px serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(e.char, e.x, e.y);
+      });
+
+      if (boss) {
+  ctx.font = `${boss.size * 2}px serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('👁️‍🗨️', boss.x, boss.y);
+
+  // Glowing pulsing HP bar
+  const barWidth = boss.size * 2.5;
+  const barHeight = 14;
+  const hpPercent = Math.max(0, boss.hp / 50);
+  const hpBarX = boss.x - barWidth / 2;
+  const hpBarY = boss.y - boss.size - 40;
+
+  const time = Date.now() * 0.005;
+  const pulse = Math.sin(time) * 5 + 10;
+
+  // Flash red if HP low
+  const glowColor = boss.hp < 15 ? `rgba(255,0,0,${0.7 + Math.sin(time * 10) * 0.3})` : `rgba(0,255,255,0.4)`;
+
+  // Outer glow
+  ctx.save();
+  ctx.shadowBlur = pulse;
+  ctx.shadowColor = glowColor;
+  ctx.fillStyle = '#111';
+  ctx.fillRect(hpBarX - 2, hpBarY - 2, barWidth + 4, barHeight + 4);
+  ctx.restore();
+
+  // Border
+  ctx.strokeStyle = 'white';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(hpBarX, hpBarY, barWidth, barHeight);
+
+  // HP fill
+  ctx.fillStyle = glowColor;
+  ctx.fillRect(hpBarX, hpBarY, barWidth * hpPercent, barHeight);
+
+  // Text
+  ctx.fillStyle = 'white';
+  ctx.font = '14px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText(`HP: ${boss.hp}/50`, boss.x, hpBarY - 8);
+}
+    }
+
+    function loop() {
+      update();
+      draw();
+      if (!paused) requestAnimationFrame(loop);
+    }
+
+    function reset() {
+      paused = true;
+      gameCanvas.style.display = 'none';
+      gameOverScreen.style.display = 'flex';
+    }
+
+    function spawnBoss() {
+      bossSpawned = true;
+      boss = {
+        x: c.width / 2,
+        y: 0,
+        size: 100,
+        speed: 1.2,
+        hp: 50
+      };
+    }
+
+function resumeGame() {
+  paused = false;
+  document.getElementById('pauseMenu').style.display = 'none';
+  loop(); // resume the game loop
+}
+
+function quitToStart() {
+  paused = false;
+  document.getElementById('pauseMenu').style.display = 'none';
+  gameCanvas.style.display = 'none';
+  startScreen.style.display = 'flex';
+  kills = 0;
+  level = 1;
+  boss = null;
+  bossSpawned = false;
+  bullets.length = 0;
+  enemies.length = 0;
+}
+
+
+// 🎮 STAGE DATA
+const stages = [
+  { name: "Marsh Street", theme: "🔥", background: "#220000", enemies: ['👹','💀','🔥'] },
+  { name: "Docks", theme: "❄️", background: "#002244", enemies: ['👻','🧊','☃️'] },
+  { name: "Lafayette", theme: "🐜", background: "#223300", enemies: ['🕷️','🐍','🪰'] },
+  { name: "The Order of Dagon Hall", theme: "🌌", background: "#000011", enemies: ['👁️‍🗨️','👾','👻'] }
+];
+
+let currentStage = null;
+
+// 🧭 STAGE SELECTION UI
+function showOverworld() {
+  gameCanvas.style.display = 'none';
+  document.getElementById('overworldMap').style.display = 'flex';
+
+  const buttons = document.getElementById('stageButtons');
+  buttons.innerHTML = '';
+
+  stages.forEach(stage => {
+    const btn = document.createElement('button');
+    btn.textContent = `${stage.theme} ${stage.name}`;
+    btn.style.padding = '10px 20px';
+    btn.style.fontSize = '18px';
+    btn.style.margin = '10px';
+    btn.onclick = () => loadStage(stage);
+    buttons.appendChild(btn);
+  });
+}
+
+// 🚀 STAGE LOADER
+function loadStage(stage) {
+  currentStage = stage;
+  document.body.style.background = stage.background;
+
+  // Reset for new stage
+  enemies.length = 0;
+  bullets.length = 0;
+  kills = 0;
+  level = 1;
+  boss = null;
+  bossSpawned = false;
+
+  document.getElementById('overworldMap').style.display = 'none';
+  gameCanvas.style.display = 'block';
+  loop();
+}
+
+// 🧠 Boss Defeat Trigger Overworld
+const originalSpawnBoss = spawnBoss;
+spawnBoss = function () {
+  bossSpawned = true;
+  boss = {
+    x: c.width / 2,
+    y: 0,
+    size: 100,
+    speed: 1.2,
+    hp: 50
+  };
+
+  // Expansion: hook boss death into overworld
+  const originalUpdate = update;
+  update = function () {
+    originalUpdate();
+
+    // If boss is dead and not already transitioned
+    if (!boss && bossSpawned) {
+      bossSpawned = false;
+      setTimeout(showOverworld, 1000); // delay before showing map
+    }
+  };
+};
+
+
+    window.addEventListener('keydown', e => {
+  keys[e.key.toLowerCase()] = true;
+
+  // Skip story with space
+  if (e.key === ' ') {
+    if (storyCanvas.style.display === 'block') {
+      skipStory();
+    }
+  }
+
+  // Toggle pause with Escape
+  if (e.key === 'Escape') {
+    paused = !paused;
+    document.getElementById('pauseMenu').style.display = paused ? 'flex' : 'none';
+    if (!paused) loop(); // resume game loop if unpaused
+  }
+});
+    window.addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
+    window.addEventListener('mousemove', e => {
+      const rect = c.getBoundingClientRect();
+      mouse.x = e.clientX - rect.left;
+      mouse.y = e.clientY - rect.top;
+    });
+
+    window.addEventListener('mousedown', e => {
+      if (!paused && gameCanvas.style.display === 'block') {
+        bullets.push({
+          x: player.x + Math.cos(player.angle) * player.size,
+          y: player.y + Math.sin(player.angle) * player.size,
+          angle: player.angle,
+          speed: 10,
+        });
+      }
+    });
+  </script>
+<audio id="bgMusic" src="
+SolarWinds.mp3" loop></audio>
+
+<div id="overworldMap" style="display: none;">
+  <h1 style="font-size: 32px;">🌍 Choose Your Next Stage</h1>
+  <div style="display:flex; gap:20px; flex-wrap:wrap; justify-content:center; margin-top:20px;" id="stageButtons"></div>
+</div>
+
+
+
+</body>
+</html>

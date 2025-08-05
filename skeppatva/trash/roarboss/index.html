@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Improved Aiming with Right-Click Pointer Lock</title>
+<style>
+  body { margin: 0; overflow: hidden; background: #000; color: #fff; font-family: sans-serif; }
+  #health, #score, #bossHealth {
+    position: absolute; padding: 5px 10px; background: rgba(0,0,0,0.5); font-size: 16px;
+  }
+  #health { top: 10px; left: 10px; }
+  #score { top: 10px; right: 10px; }
+  #bossHealth { bottom: 10px; left: 10px; width: 200px; }
+  #bossHealth .bar {
+    height: 20px;
+    background: linear-gradient(to right, #0f0, #ff0, #f00);
+    border-radius: 4px;
+    box-shadow: 0 0 10px #f00 inset;
+    transition: width 0.2s ease;
+  }
+  #overlay {
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(0,0,0,0.7); color: #fff; font-size: 48px; cursor: pointer;
+    text-align: center;
+  }
+  #overlay.hidden { display: none; }
+  #crosshair {
+    position: absolute; top: 50%; left: 50%;
+    width: 20px; height: 20px; margin: -10px 0 0 -10px;
+    pointer-events: none;
+    background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"><circle cx="10" cy="10" r="1.5" fill="white"/><line x1="10" y1="0" x2="10" y2="6" stroke="white" stroke-width="1"/><line x1="10" y1="14" x2="10" y2="20" stroke="white" stroke-width="1"/><line x1="0" y1="10" x2="6" y2="10" stroke="white" stroke-width="1"/><line x1="14" y1="10" x2="20" y2="10" stroke="white" stroke-width="1"/></svg>');
+  }
+</style>
+</head>
+<body>
+  <div id="health">Health: 100</div>
+  <div id="score">Score: 0</div>
+  <div id="bossHealth"><div class="bar"></div></div>
+  <div id="overlay" class="hidden">Game Over<br><small>Click to Restart</small></div>
+  <div id="crosshair"></div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
+ <script>
+  let scene, camera, renderer, clock;
+  let player = { health: 100, score: 0, pos: new THREE.Vector3(0,0,0), vel: new THREE.Vector3(), onGround: true, stunned: false, stunTime: 0 };
+  let boss, bossMaterial, bossHealth = 1000, bossHitTime = 0;
+  let bullets = [];
+  let bossProjectiles = [];
+  let keys = {};
+  const moveSpeed = 5; // units per second
+  const gravity = 15;  // units per second squared
+  const jumpSpeed = 8; // initial jump velocity (units per second)
+  let yaw = 0, pitch = 0;
+  let canLook = false, gameOver = false;
+  let victory = false;
+
+  let thirdPerson = false;
+  let shiftPressedLastFrame = false;
+
+  // Boss behavior variables
+  let bossState = 'idle'; // idle, moving, attacking, roaring, shooting
+  let bossCooldowns = {
+    swipe: 0,
+    fireball: 0,
+    roar: 0
+  };
+  const bossSwipeRange = 2.5;
+  const bossRoarRange = 4.5;
+  const bossMoveSpeed = 3;
+
+  const healthDiv = document.getElementById('health');
+  const scoreDiv = document.getElementById('score');
+  const bossHealthDiv = document.getElementById('bossHealth');
+  const bossHealthBar = bossHealthDiv.querySelector('.bar');
+  const overlay = document.getElementById('overlay');
+  const crosshair = document.getElementById('crosshair');
+
+  let playerMesh;
+
+  // Particle sparks group for swipe hits
+  const sparksGroup = new THREE.Group();
+
+  init();
+  requestAnimationFrame(animate);
+
+  function init() {
+    scene = new THREE.Scene();
+    camera = new THREE.PerspectiveCamera(75, innerWidth/innerHeight, 0.1, 1000);
+    camera.position.set(0, 1.6, 0);
+    renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(innerWidth, innerHeight);
+    document.body.appendChild(renderer.domElement);
+    clock = new THREE.Clock();
+
+    const dirLight = new THREE.DirectionalLight(0xffffff, 1);
+    dirLight.position.set(5, 10, 7.5);
+    scene.add(dirLight, new THREE.AmbientLight(0x404040));
+
+    const ground = new THREE.Mesh(
+      new THREE.PlaneGeometry(100,100),
+      new THREE.MeshPhongMaterial({ color: 0x222222 })
+    );
+    ground.rotation.x = -Math.PI/2;
+    scene.add(ground);
+
+    bossMaterial = new THREE.MeshPhongMaterial({ color: 0x550000, emissive: 0x770000, emissiveIntensity: 1, transparent: true });
+    boss = new THREE.Mesh(new THREE.SphereGeometry(1.5, 16, 16), bossMaterial);
+    boss.position.set(0,1.5,-30);
+    scene.add(boss);
+
+    const playerGeom = new THREE.BoxGeometry(0.5, 0.9, 0.3);
+    const playerMat = new THREE.MeshPhongMaterial({ color: 0x2288ff });
+    playerMesh = new THREE.Mesh(playerGeom, playerMat);
+    scene.add(playerMesh);
+
+    scene.add(sparksGroup);
+
+    window.addEventListener('resize', onResize);
+    document.addEventListener('keydown', e => {
+      keys[e.code] = true;
+
+      if(e.code === 'ShiftLeft' || e.code === 'ShiftRight') {
+        if(!shiftPressedLastFrame) {
+          thirdPerson = !thirdPerson;
+          shiftPressedLastFrame = true;
+          crosshair.style.display = thirdPerson ? 'none' : 'block';
+        }
+      }
+    });
+    document.addEventListener('keyup', e => {
+      keys[e.code] = false;
+      if(e.code === 'ShiftLeft' || e.code === 'ShiftRight') {
+        shiftPressedLastFrame = false;
+      }
+    });
+
+    renderer.domElement.addEventListener('contextmenu', e => e.preventDefault());
+
+    renderer.domElement.addEventListener('mousedown', e => {
+      if(e.button === 2) {
+        renderer.domElement.requestPointerLock();
+      } else if(e.button === 0) {
+        shoot();
+      }
+    });
+
+    document.addEventListener('mouseup', e => {
+      if(e.button === 2) {
+        document.exitPointerLock();
+      }
+    });
+
+    document.addEventListener('pointerlockchange', () => {
+      canLook = (document.pointerLockElement === renderer.domElement);
+    });
+
+    document.addEventListener('mousemove', e => {
+      if(canLook && !gameOver && !thirdPerson) {
+        yaw -= e.movementX * 0.0025;
+        pitch -= e.movementY * 0.0025;
+        pitch = Math.max(-Math.PI/2 + 0.1, Math.min(Math.PI/2 - 0.1, pitch));
+      }
+    });
+
+    overlay.addEventListener('click', () => location.reload());
+  }
+
+  function onResize() {
+    camera.aspect = innerWidth/innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(innerWidth, innerHeight);
+  }
+
+  function shoot() {
+    if(gameOver || player.stunned) return;
+    const bullet = new THREE.Mesh(new THREE.SphereGeometry(0.1,8,8), new THREE.MeshBasicMaterial({ color: 0xffff00 }));
+    bullet.position.copy(camera.position);
+    const dir = new THREE.Vector3();
+    camera.getWorldDirection(dir);
+    bullet.userData = { vel: dir.multiplyScalar(50) }; // bullet speed
+    bullets.push(bullet);
+    scene.add(bullet);
+  }
+
+  function animate() {
+    const dt = Math.min(clock.getDelta(), 0.1);
+    if(!gameOver) {
+      updatePlayer(dt);
+      updateBoss(dt);
+      updateBullets(dt);
+      updateBossProjectiles(dt);
+      updateSparks(dt);
+    }
+    renderer.render(scene, camera);
+    requestAnimationFrame(animate);
+  }
+
+  function updatePlayer(dt) {
+    if(player.stunned) {
+      player.stunTime -= dt;
+      if(player.stunTime <= 0) player.stunned = false;
+    }
+    let moveDir = new THREE.Vector3();
+    if(keys['KeyW']) moveDir.z -= 1;
+    if(keys['KeyS']) moveDir.z += 1;
+    if(keys['KeyA']) moveDir.x -= 1;
+    if(keys['KeyD']) moveDir.x += 1;
+    moveDir.normalize();
+
+    // Rotate movement by yaw (horizontal angle)
+    const moveRot = new THREE.Euler(0, yaw, 0);
+    moveDir.applyEuler(moveRot);
+    player.vel.x = moveDir.x * moveSpeed;
+    player.vel.z = moveDir.z * moveSpeed;
+
+    if(player.onGround && keys['Space']) {
+      player.vel.y = jumpSpeed;
+      player.onGround = false;
+    }
+
+    player.vel.y -= gravity * dt;
+
+    player.pos.addScaledVector(player.vel, dt);
+
+    if(player.pos.y <= 0) {
+      player.pos.y = 0;
+      player.vel.y = 0;
+      player.onGround = true;
+    }
+
+    playerMesh.position.copy(player.pos);
+
+    // Camera update
+    if(thirdPerson) {
+      const offset = new THREE.Vector3(0,1.6,4);
+      offset.applyAxisAngle(new THREE.Vector3(0,1,0), yaw);
+      camera.position.copy(player.pos).add(offset);
+      camera.lookAt(player.pos.x, player.pos.y + 1, player.pos.z);
+    } else {
+      camera.position.copy(player.pos);
+      camera.position.y += 1.6;
+      camera.rotation.set(pitch, yaw, 0, 'YXZ');
+    }
+
+    healthDiv.textContent = `Health: ${Math.max(0, Math.floor(player.health))}`;
+    scoreDiv.textContent = `Score: ${player.score}`;
+
+    if(player.health <= 0) {
+      gameOver = true;
+      overlay.textContent = 'Game Over\nClick to Restart';
+      overlay.classList.remove('hidden');
+    }
+  }
+
+  function updateBullets(dt) {
+    for(let i=bullets.length-1; i>=0; i--) {
+      const b = bullets[i];
+      b.position.addScaledVector(b.userData.vel, dt);
+
+      // Remove bullet if too far
+      if(b.position.distanceTo(camera.position) > 100) {
+        scene.remove(b);
+        bullets.splice(i,1);
+        continue;
+      }
+
+      // Check collision with boss (simple sphere distance)
+      if(b.position.distanceTo(boss.position) < 1.7) {
+        scene.remove(b);
+        bullets.splice(i,1);
+        bossHealth -= 30;
+        bossHitTime = performance.now();
+        player.score += 10;
+
+        // Flash boss red when hit
+        bossMaterial.color.set(0xff4444);
+        setTimeout(() => bossMaterial.color.set(0x550000), 100);
+
+        if(bossHealth <= 0) {
+          victory = true;
+          gameOver = true;
+          overlay.textContent = 'YOU KILLED CTHULHU AND AWOKE LOVECRAFT!\nClick to Restart';
+          overlay.classList.remove('hidden');
+        }
+      }
+    }
+    // Update boss health bar width and color
+    const hpPercent = Math.max(0, bossHealth / 1000);
+    bossHealthBar.style.width = (hpPercent * 100) + '%';
+
+    // Color gradient green -> yellow -> red based on hp
+    const green = Math.floor(255 * hpPercent);
+    const red = 255 - green;
+    bossHealthBar.style.background = `linear-gradient(to right, rgb(0,${green},0), rgb(${red},${green},0), rgb(${red},0,0))`;
+  }
+
+  function updateBossProjectiles(dt) {
+    for(let i=bossProjectiles.length-1; i>=0; i--) {
+      const p = bossProjectiles[i];
+      p.position.addScaledVector(p.userData.vel, dt);
+
+      // Remove if too far or lifetime exceeded
+      p.userData.life -= dt;
+      if(p.position.distanceTo(boss.position) > 50 || p.userData.life <= 0) {
+        scene.remove(p);
+        bossProjectiles.splice(i,1);
+        continue;
+      }
+
+      // Check collision with player (approximate sphere)
+      if(p.position.distanceTo(player.pos) < 0.6) {
+        player.health -= 15;
+        player.stunned = true;
+        player.stunTime = 0.5;
+
+        scene.remove(p);
+        bossProjectiles.splice(i,1);
+      }
+    }
+  }
+
+  // Screen shake variables
+  let shakeTime = 0;
+  function applyScreenShake() {
+    if(shakeTime > 0) {
+      const shakeAmt = 0.15;
+      camera.position.x += (Math.random() - 0.5) * shakeAmt;
+      camera.position.y += (Math.random() - 0.5) * shakeAmt;
+      shakeTime -= clock.getDelta();
+    }
+  }
+
+  // Swipe sparks particle system update
+  function updateSparks(dt) {
+    sparksGroup.children.forEach(p => {
+      p.userData.life -= dt;
+      if(p.userData.life <= 0) {
+        sparksGroup.remove(p);
+      } else {
+        p.position.add(p.userData.vel.clone().multiplyScalar(dt));
+        p.material.opacity = p.userData.life / p.userData.maxLife;
+      }
+    });
+  }
+
+  // Create sparks at position with direction
+  function createSparks(pos, dir) {
+    for(let i=0; i<15; i++) {
+      const spark = new THREE.Mesh(new THREE.SphereGeometry(0.05,6,6), new THREE.MeshBasicMaterial({ color: 0xffaa00, transparent:true, opacity:1 }));
+      spark.position.copy(pos);
+      spark.userData = {
+        vel: new THREE.Vector3(
+          (Math.random() - 0.5) * 3 + dir.x * 4,
+          Math.random() * 3,
+          (Math.random() - 0.5) * 3 + dir.z * 4
+        ),
+        life: 0.5 + Math.random() * 0.5,
+        maxLife: 1
+      };
+      sparksGroup.add(spark);
+    }
+  }
+
+  // Boss AI & animation
+  function updateBoss(dt) {
+    if(gameOver) return;
+
+    // Basic AI cooldown decrement
+    for(let k in bossCooldowns) {
+      bossCooldowns[k] = Math.max(0, bossCooldowns[k] - dt);
+    }
+
+    // Boss always looks at player (for visual effect)
+    const lookAtPos = player.pos.clone();
+    lookAtPos.y = boss.position.y;
+    boss.lookAt(lookAtPos);
+
+    // Boss material pulse when hit (decay over 0.5s)
+    const hitSince = (performance.now() - bossHitTime) / 500;
+    if(hitSince < 1) {
+      bossMaterial.emissiveIntensity = 2 * (1 - hitSince);
+    } else {
+      // Normal pulsing glow (slow)
+      bossMaterial.emissiveIntensity = 1 + 0.5 * Math.sin(performance.now() * 0.005);
+    }
+
+    if(bossState === 'idle') {
+      // Approach player slowly if far away
+      const dist = boss.position.distanceTo(player.pos);
+      if(dist > bossSwipeRange) {
+        bossState = 'moving';
+      } else if(bossCooldowns.swipe <= 0) {
+        bossState = 'attacking';
+      } else if(bossCooldowns.fireball <= 0) {
+        bossState = 'shooting';
+      } else if(bossCooldowns.roar <= 0 && dist < bossRoarRange) {
+        bossState = 'roaring';
+      }
+    }
+
+    if(bossState === 'moving') {
+      const dir = player.pos.clone().sub(boss.position).setY(0).normalize();
+      boss.position.addScaledVector(dir, bossMoveSpeed * dt);
+
+      if(boss.position.distanceTo(player.pos) <= bossSwipeRange) {
+        bossState = 'idle';
+      }
+    }
+
+    if(bossState === 'attacking') {
+      // Swipe attack: flash boss, check if player in range and hit
+      bossMaterial.color.set(0xff0000);
+      createSparks(boss.position.clone().add(new THREE.Vector3(0, 1.2, 0)), new THREE.Vector3(0,1,0));
+      if(boss.position.distanceTo(player.pos) <= bossSwipeRange + 0.7) {
+        player.health -= 20;
+        player.stunned = true;
+        player.stunTime = 1;
+      }
+
+      // After attack delay
+      setTimeout(() => {
+        bossMaterial.color.set(0x550000);
+        bossCooldowns.swipe = 4; // 4 second cooldown
+        bossState = 'idle';
+      }, 400);
+      bossState = 'waiting'; // temporary state to avoid multiple triggers
+    }
+
+    if(bossState === 'shooting') {
+      // Fireball attack: spawn glowing projectile aimed at player
+      const fireball = new THREE.Mesh(
+        new THREE.SphereGeometry(0.3, 8, 8),
+        new THREE.MeshPhongMaterial({ color: 0xff6600, emissive: 0xff3300, emissiveIntensity: 2, transparent: true, opacity: 0.9 })
+      );
+      fireball.position.copy(boss.position);
+      fireball.position.y += 1.5;
+      const dir = player.pos.clone().sub(boss.position).setY(0).normalize();
+      fireball.userData = { vel: dir.multiplyScalar(12), life: 6 };
+
+      // Add glowing trail using Points - simple approach
+      const trailGeo = new THREE.BufferGeometry();
+      const trailPositions = new Float32Array(10 * 3);
+      trailGeo.setAttribute('position', new THREE.BufferAttribute(trailPositions, 3));
+      const trailMat = new THREE.PointsMaterial({ color: 0xff4400, size: 0.2, transparent: true, opacity: 0.7 });
+      const trail = new THREE.Points(trailGeo, trailMat);
+      fireball.add(trail);
+      fireball.userData.trailPositions = trailPositions;
+      fireball.userData.trailIndex = 0;
+      fireball.userData.trail = trail;
+
+      bossProjectiles.push(fireball);
+      scene.add(fireball);
+
+      bossCooldowns.fireball = 5; // 5 second cooldown
+      bossState = 'idle';
+    }
+
+    if(bossState === 'roaring') {
+      // Roar attack: screen shake and possible stun
+      shakeTime = 0.6;
+      if(boss.position.distanceTo(player.pos) < bossRoarRange + 1) {
+        player.stunned = true;
+        player.stunTime = 2;
+        player.health -= 30;
+      }
+      bossCooldowns.roar = 10;
+      bossState = 'idle';
+    }
+
+    applyScreenShake();
+  }
+
+  // Extend boss projectiles to have a trailing effect
+  function updateBossProjectiles(dt) {
+    for(let i=bossProjectiles.length-1; i>=0; i--) {
+      const p = bossProjectiles[i];
+      p.position.addScaledVector(p.userData.vel, dt);
+
+      // Update trail positions
+      const trailPositions = p.userData.trailPositions;
+      for(let j=trailPositions.length - 3; j >= 3; j--) {
+        trailPositions[j] = trailPositions[j - 3];
+      }
+      trailPositions[0] = p.position.x;
+      trailPositions[1] = p.position.y;
+      trailPositions[2] = p.position.z;
+      p.userData.trail.geometry.attributes.position.needsUpdate = true;
+
+      p.userData.life -= dt;
+      if(p.position.distanceTo(boss.position) > 50 || p.userData.life <= 0) {
+        scene.remove(p);
+        bossProjectiles.splice(i,1);
+        continue;
+      }
+
+      if(p.position.distanceTo(player.pos) < 0.6) {
+        player.health -= 15;
+        player.stunned = true;
+        player.stunTime = 0.5;
+        scene.remove(p);
+        bossProjectiles.splice(i,1);
+      }
+    }
+  }
+ </script>
+</body>
+</html>

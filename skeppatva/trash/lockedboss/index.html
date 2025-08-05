@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Stage 1 Boss Demo</title>
+  <style>
+    body { margin:0; overflow:hidden; background:#000; font-family:sans-serif; }
+    #ui { position:absolute; top:10px; left:10px; color:#fff; background:rgba(0,0,0,0.5); padding:8px; border-radius:6px; z-index:10; }
+    #gameOver { display:none; position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); color:#fff; font-size:32px; background:rgba(0,0,0,0.8); padding:20px; border-radius:8px; text-align:center; z-index:11; }
+  </style>
+</head>
+<body>
+  <div id="ui">
+    ❤️ Health: <span id="health">3</span> 🎯 Score: <span id="score">0</span> 👹 Boss HP: <span id="bossHp">50</span>
+  </div>
+  <div id="gameOver">🏆 You Defeated the Boss!<br><br>Click to Restart</div>
+
+  <script src="https://cdn.jsdelivr.net/npm/three@0.153.0/build/three.min.js"></script>
+  <script>
+    // ——— Initialization ———
+    let scene = new THREE.Scene(),
+        camera = new THREE.PerspectiveCamera(75, innerWidth/innerHeight, 0.1, 1000),
+        renderer = new THREE.WebGLRenderer({ antialias: true }),
+        player, boss, bullets = [], enemyBullets = [];
+
+    document.body.appendChild(renderer.domElement);
+    renderer.setSize(innerWidth, innerHeight);
+    camera.position.set(0, 6, 12);
+    camera.lookAt(0,0,0);
+
+    // Lights + floor
+    scene.add(new THREE.AmbientLight(0x404040));
+    let dir = new THREE.DirectionalLight(0xffffff,1);
+    dir.position.set(5,10,7);
+    scene.add(dir);
+    let floor = new THREE.Mesh(
+      new THREE.PlaneGeometry(50,50),
+      new THREE.MeshStandardMaterial({ color:0x330000, emissive:0x662200, emissiveIntensity:0.5 })
+    );
+    floor.rotation.x = -Math.PI/2;
+    scene.add(floor);
+
+    // Player setup
+    player = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.5,0.5,1,16),
+      new THREE.MeshStandardMaterial({ color:0x00ff00 })
+    );
+    player.position.set(0,0.5,5);
+    scene.add(player);
+
+    // Boss setup (exact Stage 1 boss)
+    boss = new THREE.Mesh(
+      new THREE.SphereGeometry(3,32,32),
+      new THREE.MeshStandardMaterial({ color:0xff2200, emissive:0xff5500, emissiveIntensity:1 })
+    );
+    boss.position.set(0,3,-5);
+    boss.hits = 0; boss.maxHits = 50;
+    // Add ring and fire particles
+    let ring = new THREE.Mesh(
+      new THREE.TorusGeometry(4,0.3,16,100),
+      new THREE.MeshBasicMaterial({ color:0xff6600 })
+    );
+    ring.rotation.x = Math.PI/2;
+    boss.add(ring);
+    // Fire particle function
+    function createFire(p) {
+      let geom = new THREE.BufferGeometry(),
+          pos = new Float32Array(200*3);
+      for(let i=0;i<200;i++){
+        let angle = Math.random()*Math.PI*2, r=3+Math.random()*0.5;
+        pos[i*3] = Math.cos(angle)*r;
+        pos[i*3+1] = (Math.random()-0.5)*2;
+        pos[i*3+2] = Math.sin(angle)*r;
+      }
+      geom.setAttribute('position', new THREE.BufferAttribute(pos,3));
+      let mat = new THREE.PointsMaterial({ size:0.2, transparent:true, opacity:0.7, blending:THREE.AdditiveBlending, depthWrite:false });
+      let pts = new THREE.Points(geom, mat);
+      p.add(pts); p.fire = pts;
+    }
+    createFire(boss);
+    scene.add(boss);
+
+    // UI refs
+    const uiHealth = document.getElementById('health'),
+          uiScore  = document.getElementById('score'),
+          uiBossHp = document.getElementById('bossHp'),
+          gameOverDiv = document.getElementById('gameOver');
+
+    let health=3, score=0, gameOver=false, canShoot=true;
+    const shootCooldown=300, playerSpeed=0.1;
+
+    // Input handling
+    let keys={};
+    window.addEventListener('keydown', e=> keys[e.key.toLowerCase()]=true);
+    window.addEventListener('keyup',   e=> keys[e.key.toLowerCase()]=false);
+    window.addEventListener('click', ()=>{
+      if(gameOver){
+        // restart
+        health=3; score=0; boss.hits=0; gameOver=false;
+        updateUI(); gameOverDiv.style.display='none';
+      } else shoot();
+    });
+
+    // Shooting
+    function shoot(){
+      if(!canShoot||gameOver) return;
+      let b = new THREE.Mesh(
+        new THREE.SphereGeometry(0.15,8,8),
+        new THREE.MeshStandardMaterial({ color:0xffff00 })
+      );
+      // direction: towards boss
+      let dirV = boss.position.clone().sub(player.position).setY(0).normalize();
+      b.position.copy(player.position); b.direction=dirV;
+      bullets.push(b); scene.add(b);
+      canShoot=false; setTimeout(()=>canShoot=true, shootCooldown);
+    }
+
+    // Game loop
+    function animate(){
+      requestAnimationFrame(animate);
+      if(gameOver) return;
+
+      // Player movement (A/D)
+      if(keys.a) player.position.x -= playerSpeed;
+      if(keys.d) player.position.x += playerSpeed;
+
+      // Move bullets & handle boss hits
+      bullets.forEach((b,i)=>{
+        b.position.addScaledVector(b.direction,0.5);
+        if(b.position.distanceTo(boss.position)<3){
+          boss.hits++; score++; scene.remove(b); bullets.splice(i,1);
+          uiScore.textContent=score;
+          uiBossHp.textContent=boss.maxHits-boss.hits;
+          if(boss.hits>=boss.maxHits) endGame();
+        }
+      });
+
+      // Animate boss fire
+      let arr = boss.fire.geometry.attributes.position.array;
+      for(let i=1;i<arr.length;i+=3){
+        arr[i]+=0.02;
+        if(arr[i]>2) arr[i]= (Math.random()-0.5)*2;
+      }
+      boss.fire.geometry.attributes.position.needsUpdate=true;
+
+      renderer.render(scene,camera);
+    }
+
+    function endGame(){
+      gameOver=true;
+      gameOverDiv.style.display='block';
+    }
+
+    function updateUI(){
+      uiHealth.textContent=health;
+      uiScore.textContent=score;
+      uiBossHp.textContent=boss.maxHits-boss.hits;
+    }
+
+    window.addEventListener('resize', ()=>{
+      renderer.setSize(innerWidth,innerHeight);
+      camera.aspect=innerWidth/innerHeight;
+      camera.updateProjectionMatrix();
+    });
+
+    // Start
+    animate();
+    updateUI();
+  </script>
+</body>
+</html>

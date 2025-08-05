@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Arcade Animal Memory Game</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+  body {
+    font-family: 'Press Start 2P', cursive, Arial, sans-serif;
+    background: radial-gradient(circle at center, #000010 0%, #0a0a2a 90%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    margin: 0;
+    color: #00ffea;
+    text-shadow:
+      0 0 5px #00fff0,
+      0 0 10px #00fff0,
+      0 0 20px #00fff0,
+      0 0 40px #00fff0;
+  }
+  #start-screen {
+    text-align: center;
+  }
+  #start-screen h1 {
+    font-size: 32px;
+    margin-bottom: 15px;
+    color: #ff00ff;
+    text-shadow:
+      0 0 10px #ff00ff,
+      0 0 20px #ff00ff,
+      0 0 30px #ff00ff;
+  }
+  #player-name {
+    font-size: 14px;
+    padding: 6px;
+    width: 200px;
+    border: 2px solid #00fff0;
+    border-radius: 5px;
+    background: transparent;
+    color: #00fff0;
+    text-align: center;
+    outline: none;
+    transition: border-color 0.3s ease;
+  }
+  #player-name:focus {
+    border-color: #ff00ff;
+  }
+  button {
+    cursor: pointer;
+    font-family: 'Press Start 2P', cursive;
+    background: #00fff0;
+    color: #000010;
+    border: none;
+    border-radius: 8px;
+    padding: 10px 25px;
+    font-size: 14px;
+    margin: 8px 4px;
+    box-shadow:
+      0 0 10px #00fff0,
+      0 0 20px #00fff0;
+    transition: background-color 0.3s ease, color 0.3s ease;
+  }
+  button:hover {
+    background: #ff00ff;
+    color: #fff;
+    box-shadow:
+      0 0 15px #ff00ff,
+      0 0 30px #ff00ff;
+  }
+  #game-container {
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+  }
+  #difficulty {
+    margin-bottom: 10px;
+    background: transparent;
+    color: #00fff0;
+    border: 2px solid #00fff0;
+    border-radius: 8px;
+    padding: 8px 15px;
+    font-family: 'Press Start 2P', cursive;
+    font-size: 14px;
+    outline: none;
+    width: 140px;
+    text-align: center;
+  }
+  #difficulty:hover, #difficulty:focus {
+    border-color: #ff00ff;
+    color: #ff00ff;
+  }
+  #scoreboard, #timer {
+    font-size: 16px;
+    font-weight: bold;
+    margin: 6px 0;
+    text-shadow:
+      0 0 10px #00fff0;
+  }
+  .game-board {
+    display: grid;
+    grid-template-columns: repeat(5, 100px);
+    grid-gap: 10px;
+    margin-top: 20px;
+  }
+  .card {
+    width: 100px;
+    height: 100px;
+    background-color: #001122;
+    border-radius: 15px;
+    box-shadow:
+      inset 0 0 15px #00fff0,
+      0 0 12px #00fff0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+    position: relative;
+    transition: transform 0.5s ease;
+    user-select: none;
+    perspective: 1000px;
+  }
+  .card.flipped {
+    background-color: #000000;
+    box-shadow:
+      0 0 20px #ff00ff,
+      0 0 40px #ff00ff,
+      inset 0 0 20px #ff00ff;
+    transform: rotateY(180deg);
+  }
+  .card.matched {
+    background-color: #ff00ff;
+    box-shadow:
+      0 0 30px #ff00ff,
+      0 0 50px #ff00ff;
+    cursor: default;
+  }
+  .card img {
+    width: 90%;
+    height: 90%;
+    border-radius: 10px;
+    object-fit: cover;
+    pointer-events: none;
+    user-select: none;
+    backface-visibility: hidden;
+    transition: filter 0.3s ease;
+  }
+  .card.flipped img {
+    filter: drop-shadow(0 0 6px #ff00ff);
+  }
+  #particle-container {
+    position: absolute;
+    pointer-events: none;
+    top: 0; left: 0; width: 100%; height: 100%;
+    overflow: visible;
+    z-index: 9999;
+  }
+  .particle {
+    position: absolute;
+    border-radius: 50%;
+    background: #ff00ff;
+    box-shadow:
+      0 0 10px #ff00ff,
+      0 0 20px #ff00ff;
+    animation: particle-fall 0.6s forwards ease-out;
+  }
+  @keyframes particle-fall {
+    to {
+      transform: translateY(30px) scale(0);
+      opacity: 0;
+    }
+  }
+  #powerup-msg {
+    position: fixed;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #ff00ff;
+    color: #000;
+    font-family: 'Press Start 2P', cursive;
+    padding: 10px 20px;
+    border-radius: 12px;
+    box-shadow:
+      0 0 15px #ff00ff,
+      0 0 30px #ff00ff;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.5s ease;
+    z-index: 10000;
+  }
+  #powerup-msg.show {
+    opacity: 1;
+    pointer-events: auto;
+  }
+</style>
+</head>
+<body>
+
+<div id="start-screen">
+  <h1>ANIMAL MEMORY ARCADE</h1>
+  <input type="text" id="player-name" placeholder="ENTER YOUR NAME" maxlength="12" />
+  <br />
+  <button id="start-btn">START GAME</button>
+</div>
+
+<div id="game-container">
+  <select id="difficulty">
+    <option value="easy">EASY</option>
+    <option value="medium" selected>MEDIUM</option>
+    <option value="hard">HARD</option>
+  </select>
+
+  <div id="scoreboard">SCORE: 0</div>
+  <div id="timer">TIME: 0s</div>
+
+  <button id="shuffle-btn">SHUFFLE CARDS</button>
+  <button id="restart-btn" style="display:none;">RESTART GAME</button>
+
+  <div class="game-board" id="game-board"></div>
+</div>
+
+<div id="powerup-msg">DOUBLE SCORE ACTIVATED!</div>
+
+<audio id="bg-music" src="https://cdn.jsdelivr.net/gh/jshawl/chiptune-samples@master/8bit-game-loop-01.mp3" loop></audio>
+<audio id="match-sound" src="https://cdn.jsdelivr.net/gh/jshawl/chiptune-samples@master/sfx/powerup.wav"></audio>
+<audio id="mismatch-sound" src="https://cdn.jsdelivr.net/gh/jshawl/chiptune-samples@master/sfx/miss.wav"></audio>
+<audio id="powerup-sound" src="https://cdn.jsdelivr.net/gh/jshawl/chiptune-samples@master/sfx/powerup2.wav"></audio>
+
+<script>
+  const animals = [
+    { id: 0, name: 'Lion', img: 'https://upload.wikimedia.org/wikipedia/commons/7/73/Lion_waiting_in_Namibia.jpg' },
+    { id: 1, name: 'Gorilla', img: 'https://upload.wikimedia.org/wikipedia/commons/b/bb/Gorille_des_plaines_de_l%27ouest_%C3%A0_l%27Espace_Zoologique.jpg' },
+    { id: 2, name: 'Giraffe', img: 'https://upload.wikimedia.org/wikipedia/commons/9/9f/Giraffe_standing.jpg' },
+    { id: 3, name: 'Cat', img: 'https://upload.wikimedia.org/wikipedia/commons/3/3a/Cat03.jpg' },
+    { id: 4, name: 'Mouse', img: 'https://upload.wikimedia.org/wikipedia/commons/1/11/ApodemusSylvaticus.jpg' }
+  ];
+
+  const foods = [
+    { id: 0, name: 'Gazelle', img: 'https://upload.wikimedia.org/wikipedia/commons/d/d6/Chinkara_-_Shreeram_M_V_-_Bikaner.jpg' },
+    { id: 1, name: 'Banana', img: 'https://upload.wikimedia.org/wikipedia/commons/8/8a/Banana-Single.jpg' },
+    { id: 2, name: 'Leaves', img: 'https://upload.wikimedia.org/wikipedia/commons/thumb/a/ad/Acacia_greggii_thorns.jpg/1024px-Acacia_greggii_thorns.jpg' },
+    { id: 3, name: 'Fish', img: 'https://upload.wikimedia.org/wikipedia/commons/thumb/7/7f/Balantiocheilos_melanopterus_-_Karlsruhe_Zoo_02_%28cropped%29.jpg/1920px-Balantiocheilos_melanopterus_-_Karlsruhe_Zoo_02_%28cropped%29.jpg' },
+    { id: 4, name: 'Cheese', img: 'https://upload.wikimedia.org/wikipedia/commons/1/18/Somerset-Cheddar.jpg' }
+  ];
+
+  let shuffledCards = [];
+  let flippedCards = [];
+  let matchedPairs = 0;
+  let score = 0;
+  let gameInterval;
+  let timeElapsed = 0;
+  let difficulty = 'medium';
+  let playerName = '';
+  let boardLocked = false;
+  let totalPairs = 0;
+  let comboMultiplier = 1;
+  let comboTimer;
+  let doubleScoreActive = false;
+  let doubleScoreTimeout;
+
+  const bgMusic = document.getElementById('bg-music');
+  const matchSound = document.getElementById('match-sound');
+  const mismatchSound = document.getElementById('mismatch-sound');
+  const powerupSound = document.getElementById('powerup-sound');
+  const powerupMsg = document.getElementById('powerup-msg');
+
+  // Particle container for match effects
+  const particleContainer = document.createElement('div');
+  particleContainer.id = 'particle-container';
+  document.body.appendChild(particleContainer);
+
+  function createDeck() {
+    let deck = [];
+    for (let i = 0; i < animals.length; i++) {
+      deck.push({ id: i, type: 'animal', name: animals[i].name, img: animals[i].img });
+      deck.push({ id: i, type: 'food', name: foods[i].name, img: foods[i].img });
+    }
+
+    if (difficulty === 'easy') {
+      deck = deck.slice(0, 6); // 3 pairs
+    } else if (difficulty === 'hard') {
+      deck = deck.concat(deck); // duplicate deck
+    }
+
+    totalPairs = deck.length / 2;
+    shuffledCards = deck.sort(() => Math.random() - 0.5);
+  }
+
+  function renderBoard() {
+    const board = document.getElementById('game-board');
+    board.innerHTML = '';
+    shuffledCards.forEach((card, index) => {
+      const cardElement = document.createElement('div');
+      cardElement.classList.add('card');
+      cardElement.dataset.index = index;
+      cardElement.addEventListener('click', flipCard);
+      board.appendChild(cardElement);
+    });
+  }
+
+  function flipCard(e) {
+    if (boardLocked) return;
+    if (flippedCards.length < 2) {
+      const card = e.currentTarget;
+      const cardIndex = card.dataset.index;
+
+      if (!card.classList.contains('flipped') && !card.classList.contains('matched')) {
+        card.classList.add('flipped');
+        card.innerHTML = `<img src="${shuffledCards[cardIndex].img}" alt="${shuffledCards[cardIndex].name}">`;
+        flippedCards.push({ card, cardIndex });
+
+        if (flippedCards.length === 2) {
+          checkMatch();
+        }
+      }
+    }
+  }
+
+  function checkMatch() {
+    boardLocked = true;
+    const [first, second] = flippedCards;
+    const firstCard = shuffledCards[first.cardIndex];
+    const secondCard = shuffledCards[second.cardIndex];
+
+    if (firstCard.id === secondCard.id) {
+      // Match found
+      first.card.classList.add('matched');
+      second.card.classList.add('matched');
+      matchedPairs++;
+
+      // Increase score with combo and double score powerup
+      let pointsEarned = 10 * comboMultiplier * (doubleScoreActive ? 2 : 1);
+      score += pointsEarned;
+      updateScore();
+      playMatchSound();
+
+      showParticles(first.card);
+      showParticles(second.card);
+
+      resetComboTimer();
+
+      // 10% chance to get a powerup on match (only on medium and hard)
+      if ((difficulty === 'medium' || difficulty === 'hard') && Math.random() < 0.1) {
+        activateDoubleScore();
+      }
+
+      boardLocked = false;
+      flippedCards = [];
+
+      if (matchedPairs === totalPairs) {
+        clearInterval(gameInterval);
+        bgMusic.pause();
+        alert(`${playerName || 'Player'}! You matched all pairs in ${timeElapsed} seconds! FINAL SCORE: ${score}`);
+        document.getElementById('restart-btn').style.display = 'inline-block';
+      }
+    } else {
+      // No match
+      playMismatchSound();
+      setTimeout(() => {
+        first.card.classList.remove('flipped');
+        second.card.classList.remove('flipped');
+        first.card.innerHTML = '';
+        second.card.innerHTML = '';
+        flippedCards = [];
+        boardLocked = false;
+      }, 1200);
+
+      resetCombo();
+    }
+  }
+
+  function updateScore() {
+    const scoreboard = document.getElementById('scoreboard');
+    scoreboard.textContent = `SCORE: ${score} ×${comboMultiplier}`;
+  }
+
+  function startTimer() {
+    const timerDisplay = document.getElementById('timer');
+    timeElapsed = 0;
+    timerDisplay.textContent = `TIME: ${timeElapsed}s`;
+
+    if (gameInterval) clearInterval(gameInterval);
+    gameInterval = setInterval(() => {
+      timeElapsed++;
+      timerDisplay.textContent = `TIME: ${timeElapsed}s`;
+    }, 1000);
+  }
+
+  function playMatchSound() {
+    matchSound.currentTime = 0;
+    matchSound.play();
+  }
+
+  function playMismatchSound() {
+    mismatchSound.currentTime = 0;
+    mismatchSound.play();
+  }
+
+  function activateDoubleScore() {
+    if (doubleScoreActive) {
+      clearTimeout(doubleScoreTimeout);
+    } else {
+      powerupMsg.textContent = 'DOUBLE SCORE ACTIVATED!';
+      powerupMsg.classList.add('show');
+      powerupSound.currentTime = 0;
+      powerupSound.play();
+    }
+    doubleScoreActive = true;
+    comboMultiplier = 1;
+
+    doubleScoreTimeout = setTimeout(() => {
+      doubleScoreActive = false;
+      powerupMsg.classList.remove('show');
+    }, 10000);
+  }
+
+  function resetComboTimer() {
+    comboMultiplier++;
+    if (comboTimer) clearTimeout(comboTimer);
+    comboTimer = setTimeout(() => {
+      comboMultiplier = 1;
+      updateScore();
+    }, 3000);
+    updateScore();
+  }
+
+  function resetCombo() {
+    comboMultiplier = 1;
+    updateScore();
+  }
+
+  // Particle effect on matched card
+  function showParticles(cardElement) {
+    for (let i = 0; i < 8; i++) {
+      const particle = document.createElement('div');
+      particle.classList.add('particle');
+      particle.style.left = `${Math.random() * 80 + 10}px`;
+      particle.style.top = `${Math.random() * 80 + 10}px`;
+      particle.style.width = particle.style.height = `${Math.random() * 8 + 4}px`;
+      particle.style.animationDelay = `${Math.random() * 0.2}s`;
+      cardElement.appendChild(particle);
+
+      setTimeout(() => {
+        particle.remove();
+      }, 600);
+    }
+  }
+
+  document.getElementById('start-btn').addEventListener('click', () => {
+    playerName = document.getElementById('player-name').value.trim();
+    difficulty = document.getElementById('difficulty').value;
+
+    document.getElementById('start-screen').style.display = 'none';
+    document.getElementById('game-container').style.display = 'flex';
+
+    createDeck();
+    renderBoard();
+    startTimer();
+
+    score = 0;
+    matchedPairs = 0;
+    comboMultiplier = 1;
+    doubleScoreActive = false;
+    updateScore();
+
+    bgMusic.play();
+    document.getElementById('restart-btn').style.display = 'none';
+  });
+
+  document.getElementById('difficulty').addEventListener('change', () => {
+    difficulty = document.getElementById('difficulty').value;
+    createDeck();
+    renderBoard();
+    resetCombo();
+  });
+
+  document.getElementById('shuffle-btn').addEventListener('click', () => {
+    createDeck();
+    renderBoard();
+    resetCombo();
+  });
+
+  document.getElementById('restart-btn').addEventListener('click', () => {
+    createDeck();
+    renderBoard();
+    startTimer();
+    score = 0;
+    matchedPairs = 0;
+    comboMultiplier = 1;
+    doubleScoreActive = false;
+    updateScore();
+    bgMusic.play();
+    document.getElementById('restart-btn').style.display = 'none';
+  });
+
+  // Auto-pause music when tab inactive
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+      bgMusic.pause();
+    } else {
+      if (document.getElementById('game-container').style.display === 'flex') {
+        bgMusic.play();
+      }
+    }
+  });
+</script>
+
+</body>
+</html>

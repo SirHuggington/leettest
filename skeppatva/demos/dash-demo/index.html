@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Dash Mechanic Demo</title>
+<style>
+  body { margin: 0; overflow: hidden; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.152.2/build/three.min.js"></script>
+<script>
+  // Scene setup
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+  const renderer = new THREE.WebGLRenderer({antialias:true});
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  document.body.appendChild(renderer.domElement);
+
+  // Player setup
+  const playerGeometry = new THREE.BoxGeometry(1, 2, 1);
+  const playerMaterial = new THREE.MeshBasicMaterial({color: 0x00ff00});
+  const player = new THREE.Mesh(playerGeometry, playerMaterial);
+  scene.add(player);
+  player.position.y = 1; // half height
+
+  // Ground
+  const groundGeometry = new THREE.PlaneGeometry(50, 50);
+  const groundMaterial = new THREE.MeshBasicMaterial({color: 0x444444, side: THREE.DoubleSide});
+  const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+  ground.rotation.x = Math.PI / 2;
+  scene.add(ground);
+
+  // Camera position
+  camera.position.set(0, 10, 10);
+  camera.lookAt(0, 0, 0);
+
+  // Controls & physics variables
+  const keys = { w:false, a:false, s:false, d:false, shift:false };
+  let lastDashTime = 0;
+  const dashCooldown = 2000;
+  const playerSpeed = 0.1;
+  let velocityY = 0;
+  const gravity = -0.02;
+  const jumpStrength = 0.5;
+  let jumping = false;
+
+  player.dashing = false;
+  player.dashTime = 0;
+  player.dashDirection = new THREE.Vector3();
+
+  const arenaSize = 20;
+
+  // Helpers
+  function clamp(val, min, max) {
+    return Math.min(Math.max(val, min), max);
+  }
+
+  // Input listeners
+  window.addEventListener('keydown', e => {
+    switch(e.key.toLowerCase()) {
+      case 'w': keys.w = true; break;
+      case 'a': keys.a = true; break;
+      case 's': keys.s = true; break;
+      case 'd': keys.d = true; break;
+      case 'shift':
+        keys.shift = true;
+        if (!player.dashing && (Date.now() - lastDashTime > dashCooldown)) {
+          lastDashTime = Date.now();
+          player.dashing = true;
+          player.dashTime = Date.now();
+
+          // Calculate dash direction
+          let dashDir = new THREE.Vector3();
+          if (keys.w) dashDir.z -= 1;
+          if (keys.s) dashDir.z += 1;
+          if (keys.a) dashDir.x -= 1;
+          if (keys.d) dashDir.x += 1;
+
+          if (dashDir.length() === 0) {
+            dashDir.set(0, 0, -1); // dash forward
+          }
+          dashDir.y = 0;
+          dashDir.normalize();
+
+          player.dashDirection.copy(dashDir);
+        }
+        break;
+      case ' ':
+        if (!jumping) {
+          velocityY = jumpStrength;
+          jumping = true;
+        }
+        break;
+    }
+  });
+
+  window.addEventListener('keyup', e => {
+    switch(e.key.toLowerCase()) {
+      case 'w': keys.w = false; break;
+      case 'a': keys.a = false; break;
+      case 's': keys.s = false; break;
+      case 'd': keys.d = false; break;
+      case 'shift': keys.shift = false; break;
+    }
+  });
+
+  // Animate loop
+  function animate() {
+    requestAnimationFrame(animate);
+
+    // Dash logic
+    if (player.dashing) {
+      const dashSpeed = 0.5;
+      player.position.addScaledVector(player.dashDirection, dashSpeed);
+
+      if (Date.now() - player.dashTime > 200) {
+        player.dashing = false;
+      }
+    } else {
+      // Normal movement
+      let dx = 0, dz = 0;
+      if (keys.w) dz -= playerSpeed;
+      if (keys.s) dz += playerSpeed;
+      if (keys.a) dx -= playerSpeed;
+      if (keys.d) dx += playerSpeed;
+
+      player.position.x = clamp(player.position.x + dx, -arenaSize, arenaSize);
+      player.position.z = clamp(player.position.z + dz, -arenaSize, arenaSize);
+    }
+
+    // Gravity & jumping
+    velocityY += gravity;
+    player.position.y += velocityY;
+    if (player.position.y <= 1) {
+      player.position.y = 1;
+      velocityY = 0;
+      jumping = false;
+    }
+
+    renderer.render(scene, camera);
+  }
+
+  animate();
+
+  // Resize handler
+  window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth/window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+</script>
+</body>
+</html>
